@@ -270,13 +270,45 @@ fn undo_after_a_rescan_refreshes_the_restored_file_and_survives_restart() {
 
 #[test]
 fn uncertain_operation_failures_keep_the_saved_index_marked_stale() {
+    for automatic in [false, true] {
+        let (_temp, mut app) = fixture(2);
+        let error = "Journal could not be saved".into();
+        app.tx
+            .send(if automatic {
+                Message::Auto(Err(error))
+            } else {
+                Message::Applied(Err(error))
+            })
+            .unwrap();
+        app.messages();
+        assert!(app.needs_rescan);
+        if !automatic {
+            assert!(matches!(&app.modal, Some(Modal::Notice(text)) if text.contains("Press r")));
+        }
+        let reopened = App::new(app.root.clone(), app.state.clone());
+        assert!(reopened.needs_rescan);
+    }
+}
+
+#[test]
+fn uncertain_per_entry_failures_mark_the_index_stale_without_completed_paths() {
     let (_temp, mut app) = fixture(2);
     app.tx
-        .send(Message::Applied(Err("Journal could not be saved".into())))
+        .send(Message::Applied(Ok(OperationUpdate {
+            summary: "Operation needs reconciliation".into(),
+            hidden: vec![],
+            restored: None,
+            reindex: false,
+            uncertain: true,
+            blocked: vec![ops::Blocked {
+                path: app.root.join("file-000.txt").to_string_lossy().into(),
+                reason: "Moved; completion journal failed".into(),
+            }],
+        })))
         .unwrap();
     app.messages();
     assert!(app.needs_rescan);
-    assert!(matches!(&app.modal, Some(Modal::Notice(text)) if text.contains("Press r")));
+    assert!(app.modal.is_some());
     let reopened = App::new(app.root.clone(), app.state.clone());
     assert!(reopened.needs_rescan);
 }

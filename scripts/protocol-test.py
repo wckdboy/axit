@@ -123,6 +123,7 @@ with tempfile.TemporaryDirectory(prefix='axit-protocol-') as temporary:
     check(bad['isError'] and (root/'move-me.txt').exists(), 'Weak confirmation accepted')
     applied = writable.tool('axit_apply_plan', {'plan_id': plan['id'], 'confirm': 'MOVE'})
     check(not applied['isError'] and len(applied['structuredContent']['completed']) == 1, applied)
+    check(applied['structuredContent'].get('needs_reconcile') is False, 'Normal move reported an uncertain outcome')
     check((root/'organized/move-me.txt').read_text() == 'recover me', 'Move lost data')
     restored = writable.tool('axit_undo')
     check(not restored['isError'] and (root/'move-me.txt').read_text() == 'recover me', 'Undo failed')
@@ -150,6 +151,7 @@ with tempfile.TemporaryDirectory(prefix='axit-protocol-') as temporary:
     plan=trash.tool('axit_trash_plan',{'entry_ids':[entry['id']]})['structuredContent']
     result=trash.tool('axit_apply_plan',{'plan_id':plan['id'],'confirm':'TRASH'})
     check(not result['structuredContent']['completed'] and result['structuredContent']['blocked'], 'Public recovery folder accepted')
+    check(result['structuredContent'].get('needs_reconcile') is False, 'Unchanged rejection reported a post-mutation failure')
     check((root/'move-me.txt').read_text()=='recover me', 'Blocked Trash changed the source')
     fake_trash.chmod(0o700)
     trash.close()

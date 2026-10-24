@@ -143,6 +143,7 @@ struct OperationUpdate {
     hidden: Vec<u32>,
     restored: Option<u32>,
     reindex: bool,
+    uncertain: bool,
     blocked: Vec<ops::Blocked>,
 }
 
@@ -586,7 +587,8 @@ impl App {
                         Ok(update) => {
                             self.status = update.summary.clone();
                             self.activity.push(update.summary.clone());
-                            if update.reindex
+                            if update.uncertain
+                                || update.reindex
                                 || !update.hidden.is_empty()
                                 || update.restored.is_some()
                             {
@@ -644,7 +646,9 @@ impl App {
                         }
                         Ok(None) => {}
                         Err(error) => {
-                            self.status = format!("Automatic check skipped: {error}");
+                            self.status = format!("Automatic cleanup stopped: {error}");
+                            self.needs_rescan = true;
+                            self.save_overlay();
                             self.activity.push(self.status.clone());
                         }
                     }
@@ -681,6 +685,7 @@ impl App {
                         hidden,
                         restored: None,
                         reindex: false,
+                        uncertain: r.needs_reconcile,
                         blocked: r.blocked,
                     }
                 })
@@ -713,11 +718,14 @@ impl App {
             let result = ops::auto_run(&state, &index)
                 .map(|r| {
                     r.map(|r| {
-                        let message = format!(
+                        let mut message = format!(
                             "Automatic cleanup: {} · {} removed",
                             r.completed.len(),
                             bytes(r.allocated_removed)
                         );
+                        if r.needs_reconcile {
+                            message.push_str(&format!(" · {}", r.note));
+                        }
                         let hidden = r
                             .completed
                             .iter()

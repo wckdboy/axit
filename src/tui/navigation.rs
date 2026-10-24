@@ -254,6 +254,7 @@ impl App {
                                 restored,
                                 // A newer snapshot may no longer contain the restored source.
                                 reindex: restored.is_none(),
+                                uncertain: false,
                                 blocked: Vec::new(),
                             }
                         })

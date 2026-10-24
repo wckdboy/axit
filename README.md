@@ -133,6 +133,8 @@ Every operation starts with a preview. Nothing selected is moved or removed when
 plan is created. In the TUI, confirm its explicit action button or type `CLEAN`,
 `TRASH` or `MOVE`. CLI and MCP calls require the exact confirmation phrase.
 Plans expire after ten minutes and recheck file identity and active processes.
+An apply result with `needs_reconcile: true` identifies an error after paths changed.
+The TUI preserves a stale-index notice across restarts; refresh before retrying.
 
 ```sh
 axit plan 12345 --action clean
