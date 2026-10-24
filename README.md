@@ -13,6 +13,17 @@ ink for surfaces, cool blue for information and coral for destructive actions.
 [View the palette](assets/palette.svg). Runtime colors live in `src/tui/theme.rs`;
 text and action colors have automated contrast checks.
 
+## Project status
+
+[Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
+tracks current work and the roadmap. Axit 0.2.0 is being prepared with the renamed
+CLI, SCRY state compatibility, Lichen theme and keyboard/mouse navigation overhaul.
+The static [axit.sh site](site/README.md) uses the shared WCKD layout and Cloudflare
+Wrangler. The README and Plane are updated alongside verified releases.
+
+Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
+for more than 1,000 search/folder results (`AXIT-6`). Both remain planned work.
+
 ## Install
 
 Release packages support Apple Silicon, Intel Macs, Linux ARM64 and Linux x86-64.
@@ -37,7 +48,7 @@ Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.2.0` 
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 Renamed from SCRY: existing private indexes, cleanup preferences and the undo journal
-are reused in place when no Axit store exists. No 490 MiB index copy is needed.
+are reused in place when no Axit store exists. No index copy is needed.
 Legacy `SCRY_STATE_DIR`, `SCRY_TRASH_DIR` and installer variables remain accepted;
 the `AXIT_*` equivalents take precedence. MCP advertises `axit_*` tools and accepts
 the previous `scry_*` names for existing clients.
@@ -242,8 +253,12 @@ python3 -m venv .venv-ui
 .venv-ui/bin/python scripts/tui-test.py target/release/axit
 ```
 
-The release workflow packages all four targets and SHA-256 manifests. Development
-and test builds disable incremental compilation and debug information to limit local
+The release workflow packages all four targets and SHA-256 manifests. It tests the
+native Apple Silicon and both Linux musl release binaries with the protocol,
+installer and PTY suites; Intel Mac packages are also exercised locally under
+Rosetta. The standard Check workflow runs on macOS and Linux, including site checks.
+Run `npm --prefix site run check` to build and verify the website independently.
+Development and test builds disable incremental compilation and debug information to limit local
 build storage. Filesystem mutation tests operate only on temporary fixtures.
 
 AXIT is an independent MIT-licensed implementation inspired by

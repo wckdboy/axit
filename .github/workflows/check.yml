@@ -29,7 +29,5 @@ jobs:
           .venv-ui/bin/pip install pyte==0.8.2
           .venv-ui/bin/python scripts/tui-test.py target/release/axit
       - name: Static project site
-        run: |
-          node site/build.mjs
-          node site/check.mjs
+        run: npm --prefix site run check
 
