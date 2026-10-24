@@ -725,6 +725,12 @@ impl App {
                         );
                         if r.needs_reconcile {
                             message.push_str(&format!(" · {}", r.note));
+                            for blocked in &r.blocked {
+                                message.push_str(&format!(
+                                    " · {}: {}",
+                                    blocked.path, blocked.reason
+                                ));
+                            }
                         }
                         let hidden = r
                             .completed
