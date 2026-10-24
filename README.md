@@ -16,10 +16,19 @@ text and action colors have automated contrast checks.
 ## Project status
 
 [Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
-tracks current work and the roadmap. Axit 0.2.0 is being prepared with the renamed
-CLI, SCRY state compatibility, Lichen theme and keyboard/mouse navigation overhaul.
-The static [axit.sh site](site/README.md) uses the shared WCKD layout and Cloudflare
-Wrangler. The README and Plane are updated alongside verified releases.
+tracks current work and the roadmap. [Axit 0.2.0](https://github.com/wckdboy/axit/releases/tag/v0.2.0)
+is released with SCRY state compatibility, the Lichen theme, keyboard/mouse navigation
+and tested recovery across index refreshes and partial operation failures.
+[axit.sh](https://axit.sh) is live on Cloudflare using the shared WCKD layout and
+the standard [Wrangler workflow](site/README.md).
+
+[Source CI](https://github.com/wckdboy/axit/actions/runs/40143400185) passed 47 Rust
+tests and 88 MCP/ACP checks on macOS, and 45 Rust tests and 89 protocol checks on
+Linux, plus installer/tamper, PTY and site checks. The
+[release workflow](https://github.com/wckdboy/axit/actions/runs/40143631677) built all
+four targets and tested the native Apple Silicon and Linux musl packages. The
+published Intel Mac package also passed protocol, installer and PTY checks through
+Rosetta. The README and Plane are updated alongside verified releases.
 
 Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
 for more than 1,000 search/folder results (`AXIT-6`). Both remain planned work.
@@ -31,12 +40,13 @@ Linux packages are statically linked with musl. The installer checks SHA-256 bef
 installing to `~/.local/bin`; it does not modify your shell configuration or run a scan.
 
 ```sh
-curl -fsSL https://github.com/wckdboy/axit/releases/latest/download/install.sh | sh
+curl -fsSL https://axit.sh/install.sh | sh
 axit
 ```
 
-Release downloads need no Rust toolchain or GitHub sign-in. From an existing
-checkout, you can also run `sh install.sh`.
+Release downloads need no Rust toolchain or GitHub sign-in. The same installer is
+available from [GitHub Releases](https://github.com/wckdboy/axit/releases/latest/download/install.sh).
+From an existing checkout, you can also run `sh install.sh`.
 
 From a source checkout with Rust 1.88 or newer:
 
