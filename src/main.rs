@@ -7,8 +7,8 @@ use std::{
     sync::{Arc, Mutex, atomic::AtomicBool},
     time::{Duration, Instant},
 };
-use wckd_scry::{
-    self as scry,
+use wckd_axit::{
+    self as axit,
     index::{Index, Progress},
     ops::{self, Action},
     query::{self, Query, Sort},
@@ -16,7 +16,7 @@ use wckd_scry::{
 
 #[derive(Parser)]
 #[command(
-    name = "scry",
+    name = "axit",
     version,
     about = "See what is hiding on your disk. / WCKD.ai",
     long_about = "A fast, local terminal file finder and storage browser. Scans read metadata only. File operations require a reviewed plan; automatic cleanup is off by default."
@@ -137,12 +137,12 @@ fn output(value: impl serde::Serialize) -> Result<()> {
     Ok(())
 }
 fn current(state: &std::path::Path) -> Result<Index> {
-    Index::open(&scry::index_path(state))
+    Index::open(&axit::index_path(state))
 }
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("scry: {error:#}");
+        eprintln!("axit: {error:#}");
         std::process::exit(1);
     }
 }
@@ -153,21 +153,21 @@ fn run() -> Result<()> {
         std::fs::create_dir_all(&path)?;
         path.canonicalize()?
     } else {
-        scry::state_dir()?
+        axit::state_dir()?
     };
     let root = cli
         .root
         .or_else(|| current(&state).ok().and_then(|i| i.path(0).ok()))
-        .unwrap_or(scry::home()?)
+        .unwrap_or(axit::home()?)
         .canonicalize()
         .context("Root folder is unavailable")?;
     match cli.command.unwrap_or(Commands::Tui) {
         Commands::Tui => {
             ensure!(
                 io::stdout().is_terminal() && io::stdin().is_terminal(),
-                "The TUI needs an interactive terminal. Use scry scan/search/status for scripts"
+                "The TUI needs an interactive terminal. Use axit scan/search/status for scripts"
             );
-            scry::tui::run(root, state)
+            axit::tui::run(root, state)
         }
         Commands::Scan => {
             let progress = Arc::new(Mutex::new(Progress::default()));
@@ -175,11 +175,11 @@ fn run() -> Result<()> {
             signal_hook::flag::register(signal_hook::consts::SIGINT, cancel.clone())?;
             signal_hook::flag::register(signal_hook::consts::SIGTERM, cancel.clone())?;
             let started = Instant::now();
-            eprintln!("SCRY · scanning {} · metadata only", scry::text(&root));
-            let path = scry::index::scan(&root, &state, progress, cancel)?;
+            eprintln!("AXIT · scanning {} · metadata only", axit::text(&root));
+            let path = axit::index::scan(&root, &state, progress, cancel)?;
             let index = Index::open(&path)?;
             output(
-                serde_json::json!({"root":scry::text(&root),"entries":index.count,"allocated_bytes":index.entry(0).map(|e|e.allocated),"restricted_or_missing":index.errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"index_bytes":index.disk_bytes(),"index":scry::text(&path),"coverage":"Other mounts and symlinks are not followed. Permission failures appear in latest-scan.json."}),
+                serde_json::json!({"root":axit::text(&root),"entries":index.count,"allocated_bytes":index.entry(0).map(|e|e.allocated),"restricted_or_missing":index.errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"index_bytes":index.disk_bytes(),"index":axit::text(&path),"coverage":"Other mounts and symlinks are not followed. Permission failures appear in latest-scan.json."}),
             )
         }
         Commands::Search {
@@ -193,7 +193,7 @@ fn run() -> Result<()> {
             let result = query::search(&index, &q, sort.into(), limit, &HashSet::new(), None);
             if json {
                 output(
-                    serde_json::json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"entries":result.ids.iter().map(|id|scry::protocol::entry_json(&index,*id)).collect::<Result<Vec<_>>>()?}),
+                    serde_json::json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"entries":result.ids.iter().map(|id|axit::protocol::entry_json(&index,*id)).collect::<Result<Vec<_>>>()?}),
                 )
             } else {
                 for id in result.ids {
@@ -201,8 +201,8 @@ fn run() -> Result<()> {
                     println!(
                         "{:>9}  {:>12}  {}",
                         id,
-                        scry::bytes(e.allocated),
-                        scry::text(&index.path(id)?)
+                        axit::bytes(e.allocated),
+                        axit::text(&index.path(id)?)
                     );
                 }
                 eprintln!("{} matches · {:.1} ms", result.matched, result.elapsed_ms);
@@ -220,16 +220,16 @@ fn run() -> Result<()> {
                 output(
                     children
                         .iter()
-                        .map(|e| scry::protocol::entry_json(&index, e.id))
+                        .map(|e| axit::protocol::entry_json(&index, e.id))
                         .collect::<Result<Vec<_>>>()?,
                 )
             } else {
-                println!("{}", scry::text(&index.path(id)?));
+                println!("{}", axit::text(&index.path(id)?));
                 for e in children {
                     println!(
                         "{:>9}  {:>12}  {}{}",
                         e.id,
-                        scry::bytes(e.allocated),
+                        axit::bytes(e.allocated),
                         if e.is_dir() { "▸ " } else { "  " },
                         index.display_name(e)
                     );
@@ -240,7 +240,7 @@ fn run() -> Result<()> {
         Commands::Status => {
             let index = current(&state).ok();
             output(
-                serde_json::json!({"name":"SCRY / WCKD.ai","version":scry::VERSION,"root":scry::text(&root),"volume":scry::system::volume(&root)?,"entries":index.as_ref().map(|i|i.count),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"restricted_or_missing":index.as_ref().map(|i|i.errors),"automatic_cleanup":ops::auto_policy(&state)?}),
+                serde_json::json!({"name":"AXIT / WCKD.ai","version":axit::VERSION,"root":axit::text(&root),"volume":axit::system::volume(&root)?,"entries":index.as_ref().map(|i|i.count),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"restricted_or_missing":index.as_ref().map(|i|i.errors),"automatic_cleanup":ops::auto_policy(&state)?}),
             )
         }
         Commands::Doctor => {
@@ -248,7 +248,7 @@ fn run() -> Result<()> {
                 .ok()
                 .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
             output(
-                serde_json::json!({"version":scry::VERSION,"root":scry::text(&root),"state":scry::text(&state),"volume":scry::system::volume(&root)?,"layout":scry::system::disk_layout().ok(),"last_scan":restrictions,"active_file_checks":match scry::system::OpenFiles::capture(){Ok(o)=>format!("Available · {} current-user paths",o.paths.len()),Err(e)=>e.to_string()},"macos_access":"For a complete Mac scan, grant Full Disk Access to your terminal in System Settings → Privacy & Security. Administrator access alone does not bypass privacy protection. SCRY never requests or stores passwords."}),
+                serde_json::json!({"version":axit::VERSION,"root":axit::text(&root),"state":axit::text(&state),"volume":axit::system::volume(&root)?,"layout":axit::system::disk_layout().ok(),"last_scan":restrictions,"active_file_checks":match axit::system::OpenFiles::capture(){Ok(o)=>format!("Available · {} current-user paths",o.paths.len()),Err(e)=>e.to_string()},"macos_access":"For a complete Mac scan, grant Full Disk Access to your terminal in System Settings → Privacy & Security. Administrator access alone does not bypass privacy protection. AXIT never requests or stores passwords."}),
             )
         }
         Commands::Plan {
@@ -313,12 +313,12 @@ fn run() -> Result<()> {
                 ops::save_auto(&state, &policy)?;
             }
             if watch {
-                eprintln!("SCRY automatic checks · every five minutes · Ctrl-C to stop");
+                eprintln!("AXIT automatic checks · every five minutes · Ctrl-C to stop");
                 loop {
                     match ops::auto_run(&state, &current(&state)?) {
                         Ok(Some(r)) => output(r)?,
                         Ok(None) => {}
-                        Err(e) => eprintln!("scry auto: {e:#}"),
+                        Err(e) => eprintln!("axit auto: {e:#}"),
                     }
                     std::thread::sleep(Duration::from_secs(300));
                 }
@@ -330,8 +330,8 @@ fn run() -> Result<()> {
             }
         }
         Commands::Mcp { allow_mutations } => {
-            scry::protocol::serve(state, root, false, allow_mutations)
+            axit::protocol::serve(state, root, false, allow_mutations)
         }
-        Commands::Acp => scry::protocol::serve(state, root, true, false),
+        Commands::Acp => axit::protocol::serve(state, root, true, false),
     }
 }

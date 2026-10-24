@@ -639,9 +639,11 @@ pub fn rename_exclusive(source: &Path, destination: &Path) -> Result<()> {
 }
 
 fn trash_base() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("SCRY_TRASH_DIR") {
+    if let Some(path) =
+        std::env::var_os("AXIT_TRASH_DIR").or_else(|| std::env::var_os("SCRY_TRASH_DIR"))
+    {
         let path = PathBuf::from(path);
-        ensure!(path.is_absolute(), "SCRY_TRASH_DIR must be absolute");
+        ensure!(path.is_absolute(), "AXIT_TRASH_DIR must be absolute");
         recovery_dir(&path)?;
         return Ok(path.canonicalize()?.join("files"));
     }
@@ -667,7 +669,7 @@ fn trash_destination(path: &Path, id: &str) -> Result<PathBuf> {
         end -= 1;
     }
     let name = format!(
-        "scry-{id}-{}-{}",
+        "axit-{id}-{}-{}",
         fs::symlink_metadata(path)?.ino(),
         &filename[..end]
     );
@@ -739,12 +741,12 @@ fn trash_info(source: &Path, destination: &Path) -> Result<PathBuf> {
 
 fn remove_trash_info(destination: &Path) {
     #[cfg(target_os = "linux")]
-    if let Some(root) = destination.parent().and_then(Path::parent) {
-        if let Some(name) = destination.file_name() {
-            let mut name = name.to_os_string();
-            name.push(".trashinfo");
-            let _ = fs::remove_file(root.join("info").join(name));
-        }
+    if let Some(root) = destination.parent().and_then(Path::parent)
+        && let Some(name) = destination.file_name()
+    {
+        let mut name = name.to_os_string();
+        name.push(".trashinfo");
+        let _ = fs::remove_file(root.join("info").join(name));
     }
     #[cfg(target_os = "macos")]
     let _ = destination;
@@ -833,7 +835,7 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                 let claimed = path
                     .parent()
                     .context("No parent")?
-                    .join(format!(".scry-clean-{}-{}", plan.id, entry.id));
+                    .join(format!(".axit-clean-{}-{}", plan.id, entry.id));
                 rename_exclusive(&path, &claimed)?;
                 let check = || -> Result<()> {
                     let m = fs::symlink_metadata(&claimed)?;
@@ -857,7 +859,7 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                     return Err(error.context(if restored.is_ok() {
                         "Cache restored; nothing deleted"
                     } else {
-                        "Cache retained under .scry-clean name; restore original path manually"
+                        "Cache retained under .axit-clean name; restore original path manually"
                     }));
                 }
                 if let Err(error) = journal(
@@ -868,7 +870,7 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                     return Err(error.context(if restored.is_ok() {
                         "Audit could not be saved; cache restored"
                     } else {
-                        "Cache retained under .scry-clean name; nothing deleted"
+                        "Cache retained under .axit-clean name; nothing deleted"
                     }));
                 }
                 fs::remove_dir_all(&claimed)?;
@@ -1151,8 +1153,8 @@ mod tests {
         let outside = temp.path().join("info");
         fs::create_dir(&outside).unwrap();
         fs::set_permissions(&outside, fs::Permissions::from_mode(0o755)).unwrap();
-        let info = trash_info(&source, &root.join("files/scry-example")).unwrap();
-        assert_eq!(info, root.join("info/scry-example.trashinfo"));
+        let info = trash_info(&source, &root.join("files/axit-example")).unwrap();
+        assert_eq!(info, root.join("info/axit-example.trashinfo"));
         let text = fs::read_to_string(&info).unwrap();
         assert!(text.starts_with("[Trash Info]\nPath="));
         assert!(text.contains("source%20%23.txt\nDeletionDate="));
@@ -1171,14 +1173,14 @@ mod tests {
         let info = root.join("info");
         fs::create_dir(&info).unwrap();
         fs::set_permissions(&info, fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(trash_info(&source, &root.join("files/scry-example")).is_err());
+        assert!(trash_info(&source, &root.join("files/axit-example")).is_err());
         assert_eq!(fs::metadata(&info).unwrap().mode() & 0o777, 0o755);
         fs::remove_dir(&info).unwrap();
         let outside = temp.path().join("outside");
         fs::create_dir(&outside).unwrap();
         fs::set_permissions(&outside, fs::Permissions::from_mode(0o755)).unwrap();
         std::os::unix::fs::symlink(&outside, &info).unwrap();
-        assert!(trash_info(&source, &root.join("files/scry-example")).is_err());
+        assert!(trash_info(&source, &root.join("files/axit-example")).is_err());
         assert_eq!(fs::metadata(outside).unwrap().mode() & 0o777, 0o755);
         assert_eq!(fs::read(source).unwrap(), b"keep");
     }

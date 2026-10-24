@@ -30,14 +30,14 @@ class Session:
         self.resize(140,38,notify=False)
         self.before=subprocess.run(['stty','-g'],stdin=self.slave,capture_output=True,text=True,check=True).stdout.strip()
         self.restore_file=base/'restored-terminal.txt'
-        env=dict(os.environ,TERM='xterm-256color',COLORTERM='truecolor',SCRY_TEST_RESTORE=str(self.restore_file),SCRY_TRASH_DIR=str(recovery))
+        env=dict(os.environ,TERM='xterm-256color',COLORTERM='truecolor',AXIT_TEST_RESTORE=str(self.restore_file),AXIT_TRASH_DIR=str(recovery))
         env.pop('NO_COLOR',None)
         def terminal_session():
             os.setsid()
             fcntl.ioctl(self.slave,termios.TIOCSCTTY,0)
-        wrapper='"$@"\nscry_test_status=$?\nstty -g > "$SCRY_TEST_RESTORE"\nexit "$scry_test_status"\n'
+        wrapper='"$@"\naxit_test_status=$?\nstty -g > "$AXIT_TEST_RESTORE"\nexit "$axit_test_status"\n'
         args=[binary,'--root',str(root),'--state-dir',str(state)]
-        self.process=subprocess.Popen(['/bin/sh','-c',wrapper,'scry-ui-test',*args],stdin=self.slave,stdout=self.slave,stderr=self.slave,preexec_fn=terminal_session,close_fds=True,env=env)
+        self.process=subprocess.Popen(['/bin/sh','-c',wrapper,'axit-ui-test',*args],stdin=self.slave,stdout=self.slave,stderr=self.slave,preexec_fn=terminal_session,close_fds=True,env=env)
         self.screen=pyte.Screen(140,38)
         self.stream=pyte.Stream(self.screen)
         self.decoder=codecs.getincrementaldecoder('utf-8')(errors='replace')
@@ -68,13 +68,18 @@ class Session:
         while not predicate() and time.monotonic()<deadline:self.pump(.05)
         assert predicate(),self.content()
     def locate(self,text,last=False,left=False):
-        matches=[]
-        for y,line in enumerate(self.screen.display):
-            if left:line=line[:int(self.screen.columns*.65)]
-            x=line.find(text)
-            if x>=0:matches.append((x+max(0,len(text)//2),y))
-        assert matches,(text,self.content())
-        return matches[-1] if last else matches[0]
+        def matches():
+            found=[]
+            for y,line in enumerate(self.screen.display):
+                if left:line=line[:int(self.screen.columns*.65)]
+                x=line.find(text)
+                if x>=0:found.append((x+max(0,len(text)//2),y))
+            return found
+        # A PTY may split one frame across reads. Wait for the actual target,
+        # including controls near the bottom, before synthesizing its click.
+        self.wait(lambda:bool(matches()))
+        found=matches()
+        return found[-1] if last else found[0]
     @staticmethod
     def packet(code,point,up=False):
         return f'\x1b[<{code};{point[0]+1};{point[1]+1}{"m" if up else "M"}'.encode()
@@ -91,7 +96,7 @@ class Session:
             for x in range(self.screen.columns):
                 c=self.screen.buffer[y][x]
                 if c.data.strip() or c.bg!='default':cells.append({'x':x,'y':y,'text':c.data,'fg':c.fg,'bg':c.bg,'bold':c.bold})
-        (screens/(name+'.json')).write_text(json.dumps({'columns':self.screen.columns,'rows':self.screen.lines,'cells':cells}))
+        (screens/(name+'.json')).write_text(json.dumps({'columns':self.screen.columns,'rows':self.screen.lines,'background':self.screen.buffer[0][0].bg,'cells':cells}))
     def finish(self,terminate=False):
         if terminate:
             # Signal the TUI child, not its shell wrapper, so stty can verify cleanup.
@@ -113,7 +118,7 @@ class Session:
             except subprocess.TimeoutExpired:self.process.kill();self.process.wait()
         os.close(self.master);os.close(self.slave)
 
-with tempfile.TemporaryDirectory(prefix='scry-ui-',dir='/tmp') as temporary:
+with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
     base=Path(temporary).resolve();root=base/'files';state=base/'state';recovery=base/'recovery'
     for name in ['documents','downloads','projects']:(root/name).mkdir(parents=True)
     (root/'documents/budget.txt').write_text('fixture document\n'*1024)
@@ -123,7 +128,7 @@ with tempfile.TemporaryDirectory(prefix='scry-ui-',dir='/tmp') as temporary:
     subprocess.run([binary,'--root',str(root),'--state-dir',str(state),'scan'],capture_output=True,check=True)
     app=Session(root,state,recovery,base)
     try:
-        assert 'SCRY' in app.content() and 'WCKD.ai' in app.content(),app.content()
+        assert 'AXIT' in app.content() and 'WCKD.ai' in app.content(),app.content()
         assert len({c.fg for row in app.screen.buffer.values() for c in row.values()})>=5,'Theme colors missing'
         app.snapshot('space')
         app.click('downloads',left=True,double=True)
@@ -174,7 +179,7 @@ with tempfile.TemporaryDirectory(prefix='scry-ui-',dir='/tmp') as temporary:
         app.wait(lambda:not (root/'file-000.txt').exists())
         assert (root/'documents/budget.txt').exists() and (root/'downloads/installer.dmg').exists(),'Unselected fixture changed'
         app.click('? Help')
-        app.wait(lambda:'SCRY / keyboard & mouse' in app.content())
+        app.wait(lambda:'AXIT / keyboard & mouse' in app.content())
         app.wheel((30,15),count=20)
         app.send(b'\x1b[F')
         assert 'Hold Shift' in app.content(),'Dialog could not scroll to its final lines'

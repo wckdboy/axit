@@ -416,3 +416,78 @@ fn invalid_queries_show_the_error_and_clear_previous_results() {
     let text = render(&mut app, 80, 24);
     assert!(text.contains("Search could not run"));
 }
+
+#[test]
+fn changing_selection_cancels_a_pending_preview_without_stacking_workers() {
+    let (_temp, mut app) = fixture(4);
+    app.busy = true;
+    app.plan_inflight = true;
+    app.plan_generation = 20;
+    plain(&mut app, KeyCode::Down);
+    assert!(!app.busy);
+    assert!(app.plan_inflight);
+    assert!(!app.mutable());
+    app.tx
+        .send(Message::Plan(20, Err("canceled check".into())))
+        .unwrap();
+    app.messages();
+    assert!(app.modal.is_none());
+    assert!(!app.plan_inflight);
+    assert!(app.mutable());
+}
+
+#[test]
+fn palette_keeps_text_and_action_colors_readable_on_its_surfaces() {
+    use super::theme::*;
+    use ratatui::style::Color;
+    fn luminance(c: Color) -> f64 {
+        let Color::Rgb(r, g, b) = c else {
+            panic!("RGB palette")
+        };
+        let linear = |v: u8| {
+            let n = v as f64 / 255.;
+            if n <= 0.04045 {
+                n / 12.92
+            } else {
+                ((n + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+    }
+    let contrast = |a, b| {
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    };
+    for surface in [BG, PANEL, SELECTED] {
+        assert!(contrast(FG, surface) >= 7.);
+        assert!(contrast(DIM, surface) >= 4.5);
+        for action in [ACCENT, INFO, MINT, AMBER, DANGER] {
+            assert!(contrast(action, surface) >= 4.5);
+        }
+    }
+    assert!(contrast(BG, ACCENT) >= 7.);
+    assert!(contrast(BG, DANGER) >= 4.5);
+}
+
+#[test]
+fn an_entirely_blocked_plan_only_focuses_its_close_button() {
+    let (_temp, mut app) = fixture(2);
+    let file = focus(&mut app, "file-000.txt");
+    let plan = ops::plan(
+        app.index.as_ref().unwrap(),
+        &[file],
+        Action::Clean,
+        &app.state,
+        0,
+    )
+    .unwrap();
+    assert!(plan.entries.is_empty());
+    app.open_modal(Modal::Preview(Box::new(plan), Editor::default()));
+    render(&mut app, 80, 24);
+    plain(&mut app, KeyCode::Right);
+    plain(&mut app, KeyCode::Tab);
+    assert_eq!(app.modal_focus, 0);
+    app.handle_event(Event::Paste("CLEAN".into()));
+    assert_eq!(app.modal_focus, 0);
+    assert!(matches!(app.modal,Some(Modal::Preview(_,ref input)) if input.text.is_empty()));
+}

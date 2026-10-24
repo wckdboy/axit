@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Axit — find it. axit.</title>
+  <meta name="description" content="A fast Rust terminal file finder, storage browser and reviewed cleanup tool for macOS and Linux. A WCKD.ai project.">
+  <meta name="color-scheme" content="light dark"><meta name="theme-color" content="#D6F45B">
+  <link rel="canonical" href="https://axit.sh/"><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/wckd.css"><link rel="stylesheet" href="/site.css">
+  <meta property="og:type" content="website"><meta property="og:site_name" content="Axit">
+  <meta property="og:title" content="Axit — find it. axit."><meta property="og:description" content="Your files, found. Your storage, understood. Cleanup you review first.">
+  <meta property="og:url" content="https://axit.sh/"><script src="/site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead"><div class="wrap masthead__in">
+    <a class="brand" href="/"><span class="brand__mark"><img src="/favicon.svg" width="20" height="20" alt="" aria-hidden="true"></span>axit <span class="brand__sub">/ axit.sh</span></a>
+    <nav class="nav" aria-label="Primary"><a href="#features">overview</a><a href="#install">install</a><a href="https://github.com/wckdboy/axit#use">docs</a><a href="https://github.com/wckdboy/axit">source</a></nav>
+  </div></header>
+  <main id="main" class="wrap">
+    <p class="label">wckd.ai / file search &amp; storage</p>
+    <h1>find it.<br>axit<span class="pixel-stop" aria-hidden="true"></span></h1>
+    <p class="lede">Find the file. See what’s taking up space. Review what goes.<br>A fast, local terminal tool that makes your disk legible.</p>
+    <div class="actions"><a class="button button--primary" href="#install">Get Axit</a><a class="text-link" href="https://github.com/wckdboy/axit/releases/latest">Downloads &amp; checksums →</a></div>
+    <p class="platforms">macOS + Linux · ARM64 + x86-64 · Rust · MIT</p>
+    <figure class="product-art" id="terminal"><img src="/terminal.svg" width="1120" height="684" alt="Axit's Lichen terminal interface: indexed files, disk usage, inspection and keyboard or mouse actions"><figcaption>The real terminal interface, shown with temporary sample files. Keyboard, mouse and touchpad supported.</figcaption></figure>
+    <section id="features"><p class="label">a little sharper</p><h2>Three jobs.<br>One small binary.</h2>
+      <div class="capabilities">
+        <article><p class="step">01 / find</p><h3>The fast part.</h3><p>Search indexed names, paths, file types, sizes and ages. Live results stay out of the UI thread, so you can keep moving.</p></article>
+        <article><p class="step">02 / understand</p><h3>Follow the space.</h3><p>Browse large folders, inspect files and see where access is restricted. Free disk space is reported separately from indexed estimates.</p></article>
+        <article><p class="step">03 / axit</p><h3>You get the last word.</h3><p>Review Trash, moves and verified cache cleanup before applying. Undo reversible moves. Automatic cleanup starts off.</p></article>
+      </div>
+    </section>
+    <section id="install"><p class="label">ready when you are</p><h2>Install. Open. Find.</h2><p>No account. No Rust toolchain for release installs. No background service.</p>
+      <div class="install-box"><pre><code id="install-command">curl -fsSL https://axit.sh/install.sh | sh</code></pre><button class="copy" type="button" data-copy="install-command" aria-label="Copy install command" aria-live="polite">Copy</button></div>
+      <p class="install-note">Then run <code>axit</code>. The installer checks SHA-256 and installs to <code>~/.local/bin</code>. It preserves preferences and does not scan or delete user files.</p>
+      <p><a href="https://github.com/wckdboy/axit/releases/latest">Choose a platform download →</a> · <a href="https://github.com/wckdboy/axit#install">Build from source →</a></p>
+    </section>
+    <section id="agents"><div class="split"><div><p class="label">agent friendly</p><h2>Your tools<br>can find things, too.</h2><p>MCP exposes scoped search, browsing and plans. Mutations are disabled by default. The ACP adapter supports deterministic metadata commands without running a language model.</p><p><a href="https://github.com/wckdboy/axit#mcp">MCP setup →</a> · <a href="https://github.com/wckdboy/axit#acp">ACP setup →</a></p></div><pre><code>axit
+axit search 'ext:pdf size:&gt;100mb'
+axit browse
+axit mcp --root "$HOME"
+axit acp --root "$HOME"</code></pre></div></section>
+    <section id="details"><p class="label">before you swing</p><h2>Clear boundaries.</h2>
+      <details><summary>What does Axit read?</summary><p>The index stores file metadata and names. It does not index file contents, follow symlinks or scan other mounted filesystems. Access failures are counted and visible in Activity.</p></details>
+      <details><summary>What can it clean?</summary><p>Recognized generated caches with ownership, age, Git, activity and protected-content checks. Whole Rust target directories and release profiles are preserved. Trash and moves use a reviewed plan; permanent cache cleanup is clearly labeled.</p></details>
+      <details><summary>Does it run automatically?</summary><p>Automatic cleanup is off by default. Opt-in rules need explicit folders and apply age, size, free-space and cooldown limits. No background service is installed automatically.</p></details>
+      <details><summary>What about macOS privacy permissions?</summary><p>Grant your terminal Full Disk Access to include protected locations. Administrator access alone does not remove macOS privacy restrictions. Axit reports gaps in coverage.</p></details>
+      <details><summary>I used SCRY. Is my index still here?</summary><p>Yes. Axit reuses the previous private store when no Axit store exists, including the index, preferences and undo journal. Legacy configuration variables and MCP tool names remain accepted.</p></details>
+      <p class="fine">File mutations require <code>lsof</code>; scans and search work without it. Folder totals can overlap, and indexed sizes need refreshing after changes.</p>
+    </section>
+  </main>
+  <footer class="footer"><div class="wrap footer__in"><p>axit by <a href="https://wckd.ai">wckd.ai</a> · independent software.</p><div class="footer__links"><a href="https://github.com/wckdboy/axit/blob/main/LICENSE">MIT license</a><a href="/fonts/OFL.txt">font license</a><a href="https://niobium.sh">niobium</a><a href="https://autobot.sh">autobot</a><a href="https://invincible.sh">invincible</a><a href="https://omnie.sh">omnie</a><a href="https://nightfall.sh">nightfall</a></div></div></footer>
+</body>
+</html>

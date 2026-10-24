@@ -4,6 +4,7 @@ mod render;
 mod state;
 #[cfg(test)]
 mod tests;
+mod theme;
 
 use crate::{
     bytes,
@@ -185,6 +186,7 @@ pub struct App {
     applying: bool,
     quit_after_operation: bool,
     plan_generation: u64,
+    plan_inflight: bool,
     searching: bool,
     search_error: Option<String>,
     matched: u64,
@@ -243,6 +245,7 @@ impl App {
             applying: false,
             quit_after_operation: false,
             plan_generation: 0,
+            plan_inflight: false,
             searching: false,
             search_error: None,
             matched: 0,
@@ -290,6 +293,7 @@ impl App {
     }
     fn mutable(&self) -> bool {
         !self.busy
+            && !self.plan_inflight
             && !self.auto_busy
             && !self.searching
             && self.scan.is_none()
@@ -464,6 +468,7 @@ impl App {
         self.cancel_plan();
         let n = self.plan_generation;
         self.busy = true;
+        self.plan_inflight = true;
         self.status =
             "Checking selected paths, active files and protected data… · Esc cancels".into();
         let (state, tx) = (self.state.clone(), self.tx.clone());
@@ -558,6 +563,7 @@ impl App {
                     }
                 }
                 Message::Plan(n, result) => {
+                    self.plan_inflight = false;
                     if n != self.plan_generation {
                         continue;
                     }
@@ -670,6 +676,7 @@ impl App {
     fn auto_tick(&mut self) {
         if self.auto_checked.elapsed() < Duration::from_secs(60)
             || self.busy
+            || self.plan_inflight
             || self.auto_busy
             || self.scan.is_some()
             || self.modal.is_some()

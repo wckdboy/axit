@@ -1,9 +1,10 @@
 use super::navigation::{MENU, phrase};
+use super::theme::*;
 use super::*;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, BorderType, Borders, Clear, HighlightSpacing, Paragraph, Row, Scrollbar,
@@ -11,16 +12,6 @@ use ratatui::{
     },
 };
 use unicode_width::UnicodeWidthStr;
-
-const ACCENT: Color = Color::Rgb(180, 158, 255);
-const MINT: Color = Color::Rgb(125, 223, 190);
-const DIM: Color = Color::Rgb(137, 145, 166);
-const FG: Color = Color::Rgb(224, 228, 240);
-const BG: Color = Color::Rgb(17, 20, 29);
-const PANEL: Color = Color::Rgb(24, 28, 39);
-const BORDER: Color = Color::Rgb(54, 61, 78);
-const AMBER: Color = Color::Rgb(240, 193, 121);
-const SELECTED: Color = Color::Rgb(49, 43, 72);
 
 fn pane(title: impl Into<Line<'static>>, focused: bool) -> Block<'static> {
     Block::default()
@@ -106,15 +97,21 @@ fn button(
     enabled: bool,
 ) {
     let active = enabled && (focused || app.hover == Some(hit) || app.pressed == Some(hit));
+    let danger = matches!(hit, Hit::Command(Command::Trash | Command::Clean))
+        || (hit == Hit::ModalConfirm
+            && matches!(&app.modal,Some(Modal::Preview(plan,_)) if matches!(plan.action,Action::Trash|Action::Clean)));
+    let accent = if danger { DANGER } else { ACCENT };
     let style = Style::default()
         .fg(if !enabled {
             BORDER
         } else if active {
             BG
+        } else if danger {
+            DANGER
         } else {
             FG
         })
-        .bg(if active { ACCENT } else { PANEL });
+        .bg(if active { accent } else { PANEL });
     frame.render_widget(Paragraph::new(format!(" {text} ")).style(style), rect);
     if enabled {
         app.ui.hits.push((rect, hit));
@@ -127,7 +124,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Block::default().style(Style::default().bg(BG).fg(FG)), area);
     if area.width < 48 || area.height < 14 {
         frame.render_widget(
-            Paragraph::new("SCRY / WCKD.ai\nExpand to 48 × 14. Ctrl-Q quits.")
+            Paragraph::new("AXIT / WCKD.ai\nExpand to 48 × 14. Ctrl-Q quits.")
                 .style(Style::default().fg(ACCENT)),
             area,
         );
@@ -148,7 +145,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .split(area);
     let mut brand = vec![
         Span::styled(
-            " ▰ SCRY ",
+            " ▰ AXIT ",
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         Span::styled("WCKD.ai", Style::default().fg(DIM)),
@@ -159,7 +156,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Style::default().fg(if volume.available < 20 * 1024 * 1024 * 1024 {
                 AMBER
             } else {
-                MINT
+                INFO
             }),
         ));
     }
@@ -287,7 +284,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
     } else {
         let progress = app.progress.lock().map(|p| p.clone()).unwrap_or_default();
-        frame.render_widget(Paragraph::new(format!("Building the first index…\n{} entries · {} restricted/missing\n\nMetadata only. Ctrl-Q cancels and quits.",progress.entries,progress.errors)).wrap(Wrap{trim:false}).block(pane(" Welcome to SCRY ",true)),layout[3]);
+        frame.render_widget(Paragraph::new(format!("Building the first index…\n{} entries · {} restricted/missing\n\nMetadata only. Ctrl-Q cancels and quits.",progress.entries,progress.errors)).wrap(Wrap{trim:false}).block(pane(" Welcome to AXIT ",true)),layout[3]);
     }
     let status = if app.scan.is_some() {
         let p = app.progress.lock().map(|p| p.clone()).unwrap_or_default();
@@ -714,10 +711,10 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
         Some(Modal::Preview(..)) => " Review plan ",
         Some(Modal::Destination(_)) => " Move to folder ",
         Some(Modal::Auto) => " Automatic cleanup ",
-        Some(Modal::Help) => " SCRY / keyboard & mouse ",
+        Some(Modal::Help) => " AXIT / keyboard & mouse ",
         Some(Modal::Inspect) => " File details ",
         Some(Modal::Menu(_)) => " Actions ",
-        _ => " SCRY ",
+        _ => " AXIT ",
     };
     let block = pane(title, true);
     let inside = block.inner(box_area);
@@ -948,7 +945,7 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
                     bytes(policy.below_free_bytes)
                 )),
                 Line::raw(format!(
-                    "Cooldown: {} hours · while SCRY is running",
+                    "Cooldown: {} hours · while AXIT is running",
                     policy.cooldown_secs / 3600
                 )),
                 Line::raw(""),

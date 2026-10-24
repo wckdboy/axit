@@ -10,7 +10,8 @@ columns,rows=screen['columns'],screen['rows']
 cell_width,cell_height,padding=10,22,24
 width,height=columns*cell_width+padding*2,rows*cell_height+padding*2
 cells={(c['x'],c['y']):c for c in screen['cells']}
-parts=[f'<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="{round(height*1120/width)}" viewBox="0 0 {width} {height}" role="img" aria-label="SCRY terminal storage browser"><title>SCRY terminal capture — temporary test fixtures</title><rect width="100%" height="100%" rx="16" fill="#11141d"/>']
+background='#'+screen.get('background','11141d')
+parts=[f'<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="{round(height*1120/width)}" viewBox="0 0 {width} {height}" role="img" aria-label="AXIT terminal storage browser"><title>AXIT terminal capture — temporary test fixtures</title><rect width="100%" height="100%" rx="16" fill="{background}"/>']
 for y in range(rows):
     x=0
     while x<columns:

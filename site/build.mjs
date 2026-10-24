@@ -1,0 +1,14 @@
+import {cp,mkdir,rm,writeFile} from 'node:fs/promises';
+import {dirname,join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=dirname(fileURLToPath(import.meta.url));const dist=join(root,'dist');
+await rm(dist,{recursive:true,force:true});await mkdir(dist,{recursive:true});
+await cp(join(root,'public'),dist,{recursive:true});
+await cp(join(root,'index.html'),join(dist,'index.html'));
+await cp(join(root,'../assets/tui.svg'),join(dist,'terminal.svg'));
+await cp(join(root,'../assets/palette.svg'),join(dist,'palette.svg'));
+await cp(join(root,'../install.sh'),join(dist,'install.sh'));
+await writeFile(join(dist,'robots.txt'),'User-agent: *\nAllow: /\nSitemap: https://axit.sh/sitemap.xml\n');
+await writeFile(join(dist,'sitemap.xml'),'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://axit.sh/</loc></url></urlset>\n');
+await writeFile(join(dist,'404.html'),'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found — Axit</title><link rel="stylesheet" href="/wckd.css"><link rel="stylesheet" href="/site.css"><main class="wrap"><p class="label">axit / 404</p><h1>This way back<span class="pixel-stop"></span></h1><p><a href="/">Return to Axit →</a></p></main></html>');
+console.log('Built axit.sh: static WCKD layout, terminal preview and installer source.');

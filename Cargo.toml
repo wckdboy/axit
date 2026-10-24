@@ -1,13 +1,15 @@
 [package]
-name = "wckd-scry"
+name = "wckd-axit"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 description = "See what is hiding on your disk. Fast search, storage maps, and guarded cleanup."
 license = "MIT"
+homepage = "https://axit.sh"
+repository = "https://github.com/wckdboy/axit"
 
 [[bin]]
-name = "scry"
+name = "axit"
 path = "src/main.rs"
 
 [dependencies]

@@ -312,11 +312,35 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: Event) -> bool {
+        let checking = self.busy && !self.applying;
+        let chosen = checking.then(|| self.chosen());
+        let query = checking.then(|| self.query.text.clone());
+        let focus = self.focus;
+        let quit = self.dispatch_event(event);
+        if checking
+            && self.busy
+            && !self.applying
+            && (chosen.as_ref().is_some_and(|ids| *ids != self.chosen())
+                || query.as_ref().is_some_and(|text| *text != self.query.text)
+                || (self.focus == Focus::Query && focus != Focus::Query)
+                || self.modal.is_some())
+        {
+            self.cancel_plan();
+            self.status = "Preview canceled: selection or view changed · no files changed".into();
+        }
+        quit
+    }
+
+    fn dispatch_event(&mut self, event: Event) -> bool {
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => return self.key(key),
             Event::Mouse(mouse) => return self.mouse(mouse),
             Event::Paste(text) => match &mut self.modal {
-                Some(Modal::Destination(input) | Modal::Preview(_, input)) => {
+                Some(Modal::Destination(input)) => {
+                    input.insert(&text);
+                    self.modal_focus = 2;
+                }
+                Some(Modal::Preview(plan, input)) if !plan.entries.is_empty() => {
                     input.insert(&text);
                     self.modal_focus = 2;
                 }
@@ -328,6 +352,8 @@ impl App {
             Event::Resize(..) => {
                 self.ui.hits.clear();
                 self.last_click = None;
+                self.pressed = None;
+                self.drag_scrollbar = false;
             }
             _ => {}
         }
@@ -559,10 +585,9 @@ impl App {
             return;
         }
         if self.modal_focus < 2 && matches!(key.code, KeyCode::Left | KeyCode::Right) {
-            if matches!(
-                self.modal,
-                Some(Modal::Preview(..) | Modal::Destination(_) | Modal::Auto)
-            ) {
+            if matches!(&self.modal, Some(Modal::Destination(_) | Modal::Auto))
+                || matches!(&self.modal,Some(Modal::Preview(plan,_)) if !plan.entries.is_empty())
+            {
                 self.modal_focus = 1 - self.modal_focus;
             }
             return;
@@ -615,9 +640,16 @@ impl App {
                 .min(self.ui.modal_max);
             return;
         }
-        if let Some(Modal::Preview(_, input) | Modal::Destination(input)) = &mut self.modal {
-            self.modal_focus = 2;
-            input.key(key);
+        match &mut self.modal {
+            Some(Modal::Preview(plan, input)) if !plan.entries.is_empty() => {
+                self.modal_focus = 2;
+                input.key(key);
+            }
+            Some(Modal::Destination(input)) => {
+                self.modal_focus = 2;
+                input.key(key);
+            }
+            _ => {}
         }
     }
 
