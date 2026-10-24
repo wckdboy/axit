@@ -15,15 +15,12 @@ Linux packages are statically linked with musl. The installer checks SHA-256 bef
 installing to `~/.local/bin`; it does not modify your shell configuration or run a scan.
 
 ```sh
-sh install.sh
+curl -fsSL https://github.com/wckdboy/scry/releases/latest/download/install.sh | sh
 scry
 ```
 
-Start with `gh repo clone wckdboy/scry && cd scry` if you do not have a checkout.
-Release downloads need no Rust toolchain.
-
-For a private GitHub release, the installer uses your existing `gh` authentication.
-Public releases use HTTPS downloads when `gh` is unavailable.
+Release downloads need no Rust toolchain or GitHub sign-in. From an existing
+checkout, you can also run `sh install.sh`.
 
 From a source checkout with Rust 1.88 or newer:
 
