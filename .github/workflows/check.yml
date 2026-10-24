@@ -1,0 +1,25 @@
+name: Check
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked --jobs 2 -- -D warnings
+      - run: cargo test --locked --jobs 2 -- --test-threads=1
+      - run: cargo build --release --locked --jobs 2
+      - run: python3 scripts/protocol-test.py target/release/scry
+      - run: sh scripts/installer-test.sh target/release/scry
+

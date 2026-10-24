@@ -1,0 +1,6 @@
+/target/
+/dist/
+*.idx
+*.log
+.DS_Store
+
