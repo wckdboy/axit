@@ -11,7 +11,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64},
     },
 };
-use wckd_scry::{
+use wckd_axit::{
     index::{self, Index, Progress},
     ops::{self, Action},
     query::{self, Query, Sort},
@@ -127,7 +127,7 @@ fn canceled_scan_preserves_last_complete_index() {
     fs::write(root.join("original"), b"ok").unwrap();
     let first = scan(&root, &state);
     let count = first.count;
-    let before = fs::read(wckd_scry::index_path(&state)).unwrap();
+    let before = fs::read(wckd_axit::index_path(&state)).unwrap();
     fs::write(root.join("new"), b"new").unwrap();
     assert!(
         index::scan(
@@ -138,9 +138,9 @@ fn canceled_scan_preserves_last_complete_index() {
         )
         .is_err()
     );
-    assert_eq!(fs::read(wckd_scry::index_path(&state)).unwrap(), before);
+    assert_eq!(fs::read(wckd_axit::index_path(&state)).unwrap(), before);
     assert_eq!(
-        Index::open(&wckd_scry::index_path(&state)).unwrap().count,
+        Index::open(&wckd_axit::index_path(&state)).unwrap().count,
         count
     );
 }
@@ -150,7 +150,7 @@ fn corrupted_and_truncated_indexes_are_rejected() {
     let (_t, root, state) = fixture();
     fs::write(root.join("small"), b"ok").unwrap();
     scan(&root, &state);
-    let valid = fs::read(wckd_scry::index_path(&state)).unwrap();
+    let valid = fs::read(wckd_axit::index_path(&state)).unwrap();
     for cut in [0, 7, 63, valid.len() - 1] {
         let p = state.join(format!("bad-{cut}"));
         fs::write(&p, &valid[..cut]).unwrap();
@@ -397,7 +397,7 @@ fn automatic_cleanup_is_disabled_by_default_and_rejects_broad_scopes() {
     let mut p = p;
     p.enabled = true;
     assert!(ops::save_auto(&state, &p).is_err());
-    p.roots = vec![wckd_scry::home().unwrap().to_string_lossy().into()];
+    p.roots = vec![wckd_axit::home().unwrap().to_string_lossy().into()];
     assert!(ops::save_auto(&state, &p).is_err());
 }
 
@@ -440,12 +440,12 @@ fn tui_renders_small_and_wide_terminals_without_panicking() {
     let (_t, root, state) = fixture();
     fs::write(root.join("hello.txt"), b"hello").unwrap();
     scan(&root, &state);
-    let mut app = wckd_scry::tui::App::new(root, state);
+    let mut app = wckd_axit::tui::App::new(root, state);
     for (width, height) in [(160, 44), (85, 24), (48, 14), (30, 8)] {
         let backend = ratatui::backend::TestBackend::new(width, height);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| wckd_scry::tui::draw(frame, &mut app))
+            .draw(|frame| wckd_axit::tui::draw(frame, &mut app))
             .unwrap();
         let buffer = terminal.backend().buffer();
         let output = buffer
@@ -453,7 +453,7 @@ fn tui_renders_small_and_wide_terminals_without_panicking() {
             .iter()
             .map(|c| c.symbol())
             .collect::<String>();
-        assert!(output.contains("SCRY"));
+        assert!(output.contains("AXIT"));
     }
 }
 
