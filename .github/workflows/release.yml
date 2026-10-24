@@ -8,6 +8,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-14
@@ -27,11 +28,21 @@ jobs:
       - if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools lsof
       - run: sh scripts/package.sh ${{ matrix.target }}
+      - name: Test native release binary
+        if: runner.os == 'Linux' || matrix.target == 'aarch64-apple-darwin'
+        env:
+          AXIT_RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          python3 scripts/protocol-test.py "target/$AXIT_RELEASE_TARGET/release/axit"
+          sh scripts/installer-test.sh "target/$AXIT_RELEASE_TARGET/release/axit"
+          python3 -m venv .venv-ui
+          .venv-ui/bin/pip install pyte==0.8.2
+          .venv-ui/bin/python scripts/tui-test.py "target/$AXIT_RELEASE_TARGET/release/axit"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: scry-${{ matrix.target }}
+          name: axit-${{ matrix.target }}
           path: dist/*.tar.gz
           retention-days: 7
   release:
@@ -48,10 +59,10 @@ jobs:
           merge-multiple: true
       - run: |
           cd dist
-          sha256sum scry-*.tar.gz > SHA256SUMS
+          sha256sum axit-*.tar.gz > SHA256SUMS
           cp ../install.sh .
       - env:
           GH_TOKEN: ${{ github.token }}
-          SCRY_RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$SCRY_RELEASE_TAG" dist/* --title "SCRY $SCRY_RELEASE_TAG" --generate-notes
+          AXIT_RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$AXIT_RELEASE_TAG" dist/* --title "AXIT $AXIT_RELEASE_TAG" --generate-notes
 

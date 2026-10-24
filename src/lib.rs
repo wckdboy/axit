@@ -17,15 +17,18 @@ pub fn home() -> Result<PathBuf> {
 }
 
 pub fn state_dir() -> Result<PathBuf> {
-    let p = if let Some(p) = std::env::var_os("SCRY_STATE_DIR") {
+    let p = if let Some(p) =
+        std::env::var_os("AXIT_STATE_DIR").or_else(|| std::env::var_os("SCRY_STATE_DIR"))
+    {
         PathBuf::from(p)
     } else if cfg!(target_os = "macos") {
-        home()?.join("Library/Application Support/ai.wckd.scry")
+        let base = home()?.join("Library/Application Support");
+        preferred_state(base.join("ai.wckd.axit"), base.join("ai.wckd.scry"))
     } else {
-        std::env::var_os("XDG_STATE_HOME")
+        let base = std::env::var_os("XDG_STATE_HOME")
             .map(PathBuf::from)
-            .unwrap_or(home()?.join(".local/state"))
-            .join("scry")
+            .unwrap_or(home()?.join(".local/state"));
+        preferred_state(base.join("axit"), base.join("scry"))
     };
     std::fs::create_dir_all(&p)?;
     #[cfg(unix)]
@@ -34,6 +37,16 @@ pub fn state_dir() -> Result<PathBuf> {
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700))?;
     }
     Ok(p)
+}
+
+fn preferred_state(primary: PathBuf, legacy: PathBuf) -> PathBuf {
+    // Reuse the old private store in place, including its large metadata index.
+    // An explicit AXIT_STATE_DIR or an existing Axit store always takes priority.
+    if !primary.exists() && legacy.is_dir() {
+        legacy
+    } else {
+        primary
+    }
 }
 
 pub fn index_path(state: &Path) -> PathBuf {
@@ -97,4 +110,24 @@ pub fn scoped_alias(path: &Path, root: &Path) -> Result<PathBuf> {
         }
     }
     anyhow::bail!("Path is outside the selected scope")
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    #[test]
+    fn existing_scry_data_is_reused_without_copying_or_overwriting_a_new_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let legacy = temp.path().join("scry");
+        let primary = temp.path().join("axit");
+        std::fs::create_dir(&legacy).unwrap();
+        std::fs::write(legacy.join("disk.idx"), b"keep index").unwrap();
+        assert_eq!(preferred_state(primary.clone(), legacy.clone()), legacy);
+        std::fs::create_dir(&primary).unwrap();
+        assert_eq!(preferred_state(primary.clone(), legacy.clone()), primary);
+        assert_eq!(
+            std::fs::read(legacy.join("disk.idx")).unwrap(),
+            b"keep index"
+        );
+    }
 }

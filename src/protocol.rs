@@ -98,7 +98,7 @@ impl Shared {
             .read()
             .map_err(|_| anyhow::anyhow!("Index lock unavailable"))?
             .clone()
-            .context("No index yet. Call scry_scan, then poll scry_status")
+            .context("No index yet. Call axit_scan, then poll axit_status")
     }
     fn scan(self: &Arc<Self>) -> Result<Value> {
         if self.scanning.swap(true, Ordering::AcqRel) {
@@ -148,22 +148,26 @@ impl Shared {
     }
     fn status(&self) -> Value {
         let index = self.index().ok();
-        json!({"name":"SCRY","version":crate::VERSION,"root":crate::text(&self.root),"scanning":self.scanning.load(Ordering::Acquire),
+        json!({"name":"AXIT","version":crate::VERSION,"root":crate::text(&self.root),"scanning":self.scanning.load(Ordering::Acquire),
             "progress":self.progress.lock().ok().map(|p|p.clone()),"entries":index.as_ref().map(|i|i.count),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),
             "restricted_or_missing":index.as_ref().map(|i|i.errors),"volume":crate::system::volume(&self.root).ok(),"mutations_enabled":self.writes,
             "coverage_note":"Permission failures are reported. Folder totals overlap; APFS shared blocks affect reclaimable space."})
     }
     fn tool(self: &Arc<Self>, name: &str, args: &Value, generation: &AtomicU64) -> Result<Value> {
+        let legacy = name
+            .strip_prefix("scry_")
+            .map(|suffix| format!("axit_{suffix}"));
+        let name = legacy.as_deref().unwrap_or(name);
         match name {
-            "scry_status" => {
+            "axit_status" => {
                 keys(args, &[])?;
                 Ok(self.status())
             }
-            "scry_scan" => {
+            "axit_scan" => {
                 keys(args, &[])?;
                 self.scan()
             }
-            "scry_search" => {
+            "axit_search" => {
                 keys(args, &["query", "limit", "sort"])?;
                 let input = args["query"].as_str().context("query must be a string")?;
                 let query = Query::parse(input)?;
@@ -197,7 +201,7 @@ impl Shared {
                     json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"canceled":result.canceled,"entries":entries}),
                 )
             }
-            "scry_browse" => {
+            "axit_browse" => {
                 keys(args, &["entry_id", "limit"])?;
                 let id = integer(args, "entry_id", 0, u32::MAX as u64 - 1)? as u32;
                 let limit = integer(args, "limit", 100, 500)? as usize;
@@ -211,12 +215,12 @@ impl Shared {
                     json!({"folder":entry_json(&index,id)?,"children":index.children(id,limit).iter().map(|e|entry_json(&index,e.id)).collect::<Result<Vec<_>>>()?,"note":"Child folders include their contents; parent and child totals overlap."}),
                 )
             }
-            "scry_cleanup_plan" | "scry_trash_plan" | "scry_move_plan" => {
+            "axit_cleanup_plan" | "axit_trash_plan" | "axit_move_plan" => {
                 keys(
                     args,
-                    if name == "scry_move_plan" {
+                    if name == "axit_move_plan" {
                         &["entry_ids", "destination"]
-                    } else if name == "scry_cleanup_plan" {
+                    } else if name == "axit_cleanup_plan" {
                         &["entry_ids", "minimum_age_hours"]
                     } else {
                         &["entry_ids"]
@@ -224,9 +228,9 @@ impl Shared {
                 )?;
                 let ids = ids(args)?;
                 let index = self.index()?;
-                let action = if name == "scry_cleanup_plan" {
+                let action = if name == "axit_cleanup_plan" {
                     Action::Clean
-                } else if name == "scry_move_plan" {
+                } else if name == "axit_move_plan" {
                     Action::Move {
                         destination: args["destination"]
                             .as_str()
@@ -246,7 +250,7 @@ impl Shared {
                     age,
                 )?)?)
             }
-            "scry_apply_plan" => {
+            "axit_apply_plan" => {
                 keys(args, &["plan_id", "confirm"])?;
                 ensure!(
                     self.writes,
@@ -266,7 +270,7 @@ impl Shared {
                     args["confirm"].as_str().context("Missing confirmation")?,
                 )?)?)
             }
-            "scry_undo" => {
+            "axit_undo" => {
                 keys(args, &[])?;
                 ensure!(self.writes, "Mutations are disabled");
                 ops::undo_in(&self.state, Some(&self.root))
@@ -286,49 +290,49 @@ pub fn tools(writes: bool) -> Vec<Value> {
         json!({"type":"array","items":{"type":"integer","minimum":0},"minItems":1,"maxItems":128});
     let mut tools = vec![
         tool(
-            "scry_status",
+            "axit_status",
             "Inspect index progress, permission gaps and filesystem free space.",
             json!({}),
             &[],
             false,
         ),
         tool(
-            "scry_scan",
-            "Start a read-only background scan of the server's fixed scope. Poll scry_status.",
+            "axit_scan",
+            "Start a read-only background scan of the server's fixed scope. Poll axit_status.",
             json!({}),
             &[],
             false,
         ),
         tool(
-            "scry_search",
+            "axit_search",
             "Find indexed filenames. Supports quoted words, globs, ext:, size:, older:, type:, path:, !term and re:.",
             json!({"query":{"type":"string","maxLength":4096},"limit":{"type":"integer","minimum":1,"maximum":500},"sort":{"enum":["name","size","modified"]}}),
             &["query"],
             false,
         ),
         tool(
-            "scry_browse",
+            "axit_browse",
             "List the largest children of a directory; allocated folder sizes overlap.",
             json!({"entry_id":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":500}}),
             &[],
             false,
         ),
         tool(
-            "scry_cleanup_plan",
+            "axit_cleanup_plan",
             "Preview verified disposable-cache cleanup. Does not delete files. Active files, source, archives, keys and models are protected.",
             json!({"entry_ids":list.clone(),"minimum_age_hours":{"type":"integer","minimum":1,"maximum":87600}}),
             &["entry_ids"],
             false,
         ),
         tool(
-            "scry_trash_plan",
+            "axit_trash_plan",
             "Preview moving selected entries to Trash. Does not move files or release disk space.",
             json!({"entry_ids":list.clone()}),
             &["entry_ids"],
             false,
         ),
         tool(
-            "scry_move_plan",
+            "axit_move_plan",
             "Preview organizing selected entries into an existing destination folder inside the indexed scope. Never overwrites.",
             json!({"entry_ids":list,"destination":{"type":"string"}}),
             &["entry_ids", "destination"],
@@ -336,9 +340,9 @@ pub fn tools(writes: bool) -> Vec<Value> {
         ),
     ];
     if writes {
-        tools.push(tool("scry_apply_plan","Apply a user-reviewed, unexpired plan. Requires the exact confirmation phrase CLEAN, TRASH or MOVE. Permanent cache cleanup cannot be undone.",json!({"plan_id":{"type":"string"},"confirm":{"enum":["CLEAN","TRASH","MOVE"]}}),&["plan_id","confirm"],true));
+        tools.push(tool("axit_apply_plan","Apply a user-reviewed, unexpired plan. Requires the exact confirmation phrase CLEAN, TRASH or MOVE. Permanent cache cleanup cannot be undone.",json!({"plan_id":{"type":"string"},"confirm":{"enum":["CLEAN","TRASH","MOVE"]}}),&["plan_id","confirm"],true));
         tools.push(tool(
-            "scry_undo",
+            "axit_undo",
             "Undo the last reversible move without overwriting an existing destination.",
             json!({}),
             &[],
@@ -521,13 +525,13 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
             }
             initialized = true;
             let result = if acp {
-                json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":false,"audio":false,"embeddedContext":false},"mcpCapabilities":{"http":false,"sse":false}},"agentInfo":{"name":"scry","title":"SCRY / WCKD.ai","version":crate::VERSION},"authMethods":[]})
+                json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":false,"audio":false,"embeddedContext":false},"mcpCapabilities":{"http":false,"sse":false}},"agentInfo":{"name":"axit","title":"AXIT / WCKD.ai","version":crate::VERSION},"authMethods":[]})
             } else {
                 let version = params["protocolVersion"]
                     .as_str()
                     .filter(|s| ["2025-11-25", "2025-06-18", "2024-11-05"].contains(s))
                     .unwrap_or("2025-11-25");
-                json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"scry","version":crate::VERSION},"instructions":"Metadata-only filesystem search and storage analysis. Scans report permission gaps. Mutations are disabled by default; review plans in the TUI."})
+                json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"axit","version":crate::VERSION},"instructions":"Metadata-only filesystem search and storage analysis. Scans report permission gaps. Mutations are disabled by default; review plans in the TUI."})
             };
             respond(&output, id, result);
             continue;
@@ -559,10 +563,10 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
                 );
                 ensure!(
                     params["mcpServers"].as_array().is_none_or(|v| v.is_empty()),
-                    "SCRY does not start external MCP servers"
+                    "AXIT does not start external MCP servers"
                 );
                 let session = format!(
-                    "scry-{}-{}",
+                    "axit-{}-{}",
                     crate::unix_now(),
                     shared.sequence.fetch_add(1, Ordering::Relaxed)
                 );

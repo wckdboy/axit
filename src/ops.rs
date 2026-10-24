@@ -90,6 +90,8 @@ pub struct Applied {
     pub completed: Vec<String>,
     pub blocked: Vec<Blocked>,
     pub allocated_removed: u64,
+    /// A failed entry changed paths; refresh the index before retrying it.
+    pub needs_reconcile: bool,
     pub note: String,
 }
 
@@ -639,9 +641,11 @@ pub fn rename_exclusive(source: &Path, destination: &Path) -> Result<()> {
 }
 
 fn trash_base() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("SCRY_TRASH_DIR") {
+    if let Some(path) =
+        std::env::var_os("AXIT_TRASH_DIR").or_else(|| std::env::var_os("SCRY_TRASH_DIR"))
+    {
         let path = PathBuf::from(path);
-        ensure!(path.is_absolute(), "SCRY_TRASH_DIR must be absolute");
+        ensure!(path.is_absolute(), "AXIT_TRASH_DIR must be absolute");
         recovery_dir(&path)?;
         return Ok(path.canonicalize()?.join("files"));
     }
@@ -667,7 +671,7 @@ fn trash_destination(path: &Path, id: &str) -> Result<PathBuf> {
         end -= 1;
     }
     let name = format!(
-        "scry-{id}-{}-{}",
+        "axit-{id}-{}-{}",
         fs::symlink_metadata(path)?.ino(),
         &filename[..end]
     );
@@ -739,12 +743,12 @@ fn trash_info(source: &Path, destination: &Path) -> Result<PathBuf> {
 
 fn remove_trash_info(destination: &Path) {
     #[cfg(target_os = "linux")]
-    if let Some(root) = destination.parent().and_then(Path::parent) {
-        if let Some(name) = destination.file_name() {
-            let mut name = name.to_os_string();
-            name.push(".trashinfo");
-            let _ = fs::remove_file(root.join("info").join(name));
-        }
+    if let Some(root) = destination.parent().and_then(Path::parent)
+        && let Some(name) = destination.file_name()
+    {
+        let mut name = name.to_os_string();
+        name.push(".trashinfo");
+        let _ = fs::remove_file(root.join("info").join(name));
     }
     #[cfg(target_os = "macos")]
     let _ = destination;
@@ -763,6 +767,15 @@ fn journal(state: &Path, value: serde_json::Value) -> Result<()> {
 }
 
 pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
+    apply_with_journal(state, plan, confirmation, journal)
+}
+
+fn apply_with_journal(
+    state: &Path,
+    plan: &Plan,
+    confirmation: &str,
+    mut write_journal: impl FnMut(&Path, serde_json::Value) -> Result<()>,
+) -> Result<Applied> {
     let phrase = if plan.action == Action::Clean {
         "CLEAN"
     } else if plan.action == Action::Trash {
@@ -798,6 +811,7 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
         completed: Vec::new(),
         blocked: Vec::new(),
         allocated_removed: 0,
+        needs_reconcile: false,
         note: if plan.action == Action::Trash {
             "Moved to Trash. This does not free disk space until Trash is emptied. Undo is available.".into()
         } else if plan.action == Action::Clean {
@@ -807,7 +821,8 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
         },
     };
     for entry in &plan.entries {
-        let execute = || -> Result<u64> {
+        let mut changed = false;
+        let mut execute = || -> Result<u64> {
             let path = decode(&entry.native)?;
             let metadata = identity_path(&path, &root)?;
             ensure!(
@@ -833,8 +848,9 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                 let claimed = path
                     .parent()
                     .context("No parent")?
-                    .join(format!(".scry-clean-{}-{}", plan.id, entry.id));
+                    .join(format!(".axit-clean-{}-{}", plan.id, entry.id));
                 rename_exclusive(&path, &claimed)?;
+                changed = true;
                 let check = || -> Result<()> {
                     let m = fs::symlink_metadata(&claimed)?;
                     ensure!(
@@ -854,28 +870,32 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                 };
                 if let Err(error) = check() {
                     let restored = rename_exclusive(&claimed, &path);
+                    changed = restored.is_err();
                     return Err(error.context(if restored.is_ok() {
                         "Cache restored; nothing deleted"
                     } else {
-                        "Cache retained under .scry-clean name; restore original path manually"
+                        "Cache retained under .axit-clean name; restore original path manually"
                     }));
                 }
-                if let Err(error) = journal(
+                if let Err(error) = write_journal(
                     state,
                     serde_json::json!({"time":crate::unix_now(),"plan":plan.id,"action":"clean_started","source":entry.native,"claimed":encode(&claimed)}),
                 ) {
                     let restored = rename_exclusive(&claimed, &path);
+                    changed = restored.is_err();
                     return Err(error.context(if restored.is_ok() {
                         "Audit could not be saved; cache restored"
                     } else {
-                        "Cache retained under .scry-clean name; nothing deleted"
+                        "Cache retained under .axit-clean name; nothing deleted"
                     }));
                 }
-                fs::remove_dir_all(&claimed)?;
-                journal(
+                fs::remove_dir_all(&claimed)
+                    .with_context(|| format!("Cleanup incomplete at {}", crate::text(&claimed)))?;
+                write_journal(
                     state,
                     serde_json::json!({"time":crate::unix_now(),"plan":plan.id,"action":"clean","source":entry.native,"bytes":entry.bytes}),
-                )?;
+                )
+                .context("Cache removed, but completion audit could not be saved")?;
                 Ok(entry.bytes)
             } else {
                 let destination = match &plan.action {
@@ -904,7 +924,7 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                     ensure!(destination.starts_with(&root), "Destination scope changed");
                 }
                 // Persist recovery information before changing a user's path.
-                journal(
+                write_journal(
                     state,
                     serde_json::json!({"time":crate::unix_now(),"plan":plan.id,"action":"move_pending","trash":plan.action==Action::Trash,"source":entry.native,"destination":encode(&destination),"inode":entry.identity.inode,"device":entry.identity.device}),
                 )?;
@@ -918,10 +938,17 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                     }
                     return Err(error);
                 }
-                journal(
+                changed = true;
+                write_journal(
                     state,
                     serde_json::json!({"time":crate::unix_now(),"plan":plan.id,"action":"move","trash":plan.action==Action::Trash,"source":entry.native,"destination":encode(&destination),"inode":entry.identity.inode,"device":entry.identity.device}),
-                )?;
+                )
+                .with_context(|| {
+                    format!(
+                        "Moved to {}, but completion journal could not be saved; pending recovery record retained",
+                        crate::text(&destination)
+                    )
+                })?;
                 Ok(0)
             }
         };
@@ -930,11 +957,17 @@ pub fn apply(state: &Path, plan: &Plan, confirmation: &str) -> Result<Applied> {
                 result.completed.push(entry.path.clone());
                 result.allocated_removed = result.allocated_removed.saturating_add(bytes);
             }
-            Err(error) => result.blocked.push(Blocked {
-                path: entry.path.clone(),
-                reason: format!("{error:#}"),
-            }),
+            Err(error) => {
+                result.needs_reconcile |= changed;
+                result.blocked.push(Blocked {
+                    path: entry.path.clone(),
+                    reason: format!("{error:#}"),
+                });
+            }
         }
+    }
+    if result.needs_reconcile {
+        result.note = "Some paths changed before an error. Refresh the index and inspect the operation details before retrying.".into();
     }
     fs::write(
         state.join("plans").join(format!("{}.done", plan.id)),
@@ -1142,6 +1175,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn journal_failures_distinguish_unchanged_rejection_from_recoverable_move() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().canonicalize().unwrap();
+        let root = base.join("files");
+        let state = base.join("state");
+        fs::create_dir_all(root.join("destination")).unwrap();
+        private_dir(&state).unwrap();
+        let source = root.join("source.txt");
+        let destination = root.join("destination/source.txt");
+        fs::write(&source, b"keep").unwrap();
+        let path = crate::index::scan(
+            &root,
+            &state,
+            std::sync::Arc::new(std::sync::Mutex::new(crate::index::Progress::default())),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+        let index = Index::open(&path).unwrap();
+        let id = index.find_path(&source).unwrap();
+        let action = Action::Move {
+            destination: root.join("destination").to_string_lossy().into(),
+        };
+        let preview = plan(&index, &[id], action.clone(), &state, 0).unwrap();
+        let rejected = apply_with_journal(&state, &preview, "MOVE", |_, _| {
+            bail!("Injected pre-move journal failure")
+        })
+        .unwrap();
+        assert!(!rejected.needs_reconcile);
+        assert!(source.exists() && !destination.exists());
+
+        let preview = plan(&index, &[id], action, &state, 0).unwrap();
+        let uncertain = apply_with_journal(&state, &preview, "MOVE", |state, value| {
+            if value["action"] == "move" {
+                bail!("Injected completion journal failure");
+            }
+            journal(state, value)
+        })
+        .unwrap();
+        assert!(uncertain.completed.is_empty());
+        assert_eq!(uncertain.blocked.len(), 1);
+        assert!(uncertain.needs_reconcile);
+        assert!(uncertain.blocked[0].reason.contains("Moved to"));
+        assert!(!source.exists() && destination.exists());
+        assert!(
+            fs::read_to_string(state.join("plans").join(format!("{}.done", preview.id)))
+                .unwrap()
+                .contains("\"needs_reconcile\":true")
+        );
+        undo(&state).unwrap();
+        assert_eq!(fs::read(source).unwrap(), b"keep");
+        assert!(!destination.exists());
+    }
+
+    #[test]
     fn freedesktop_metadata_stays_inside_the_private_recovery_root() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("recovery");
@@ -1151,8 +1238,8 @@ mod tests {
         let outside = temp.path().join("info");
         fs::create_dir(&outside).unwrap();
         fs::set_permissions(&outside, fs::Permissions::from_mode(0o755)).unwrap();
-        let info = trash_info(&source, &root.join("files/scry-example")).unwrap();
-        assert_eq!(info, root.join("info/scry-example.trashinfo"));
+        let info = trash_info(&source, &root.join("files/axit-example")).unwrap();
+        assert_eq!(info, root.join("info/axit-example.trashinfo"));
         let text = fs::read_to_string(&info).unwrap();
         assert!(text.starts_with("[Trash Info]\nPath="));
         assert!(text.contains("source%20%23.txt\nDeletionDate="));
@@ -1171,14 +1258,14 @@ mod tests {
         let info = root.join("info");
         fs::create_dir(&info).unwrap();
         fs::set_permissions(&info, fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(trash_info(&source, &root.join("files/scry-example")).is_err());
+        assert!(trash_info(&source, &root.join("files/axit-example")).is_err());
         assert_eq!(fs::metadata(&info).unwrap().mode() & 0o777, 0o755);
         fs::remove_dir(&info).unwrap();
         let outside = temp.path().join("outside");
         fs::create_dir(&outside).unwrap();
         fs::set_permissions(&outside, fs::Permissions::from_mode(0o755)).unwrap();
         std::os::unix::fs::symlink(&outside, &info).unwrap();
-        assert!(trash_info(&source, &root.join("files/scry-example")).is_err());
+        assert!(trash_info(&source, &root.join("files/axit-example")).is_err());
         assert_eq!(fs::metadata(outside).unwrap().mode() & 0o777, 0o755);
         assert_eq!(fs::read(source).unwrap(), b"keep");
     }

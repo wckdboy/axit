@@ -1,0 +1,20 @@
+---
+description: Keep Axit releases, README and Plane accurate together
+alwaysApply: true
+---
+
+# Axit project tracking
+
+- Public repository: https://github.com/wckdboy/axit. Website: https://axit.sh.
+- Plane workspace: `wckd`; project: `Axit` / `AXIT`;
+  project id: `21757fa0-759f-4ce5-a114-4620fd693302`.
+- Keep the root README current with shipped behavior, installation, controls,
+  supported platforms, meaningful validation and the near-term roadmap.
+- Update the relevant Plane work items when work begins, scope changes or
+  verified work ships. Link commits, PRs, checks and releases as evidence.
+- Mark a work item or release complete only after the required checks and
+  publication/deployment have succeeded. Record unresolved limitations honestly.
+- For a release, update the README, GitHub release notes and Plane release
+  together. Preserve planned work as backlog instead of implying it has shipped.
+- Follow the standard `site/` Wrangler workflow for axit.sh and update its
+  installer mirror through the root `install.sh` source.

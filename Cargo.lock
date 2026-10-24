@@ -1078,8 +1078,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
-name = "wckd-scry"
-version = "0.1.0"
+name = "wckd-axit"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1094,6 +1094,7 @@ dependencies = [
  "sha2",
  "signal-hook",
  "tempfile",
+ "unicode-width",
 ]
 
 [[package]]

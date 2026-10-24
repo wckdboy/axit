@@ -1,0 +1,11 @@
+{
+  "name": "axit-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs && node check.mjs",
+    "dev": "npm run build && npx wrangler@4.152.0 dev",
+    "deploy": "npm run build && npx wrangler@4.152.0 deploy"
+  }
+}
