@@ -252,6 +252,8 @@ impl App {
                                 ),
                                 hidden: Vec::new(),
                                 restored,
+                                // A newer snapshot may no longer contain the restored source.
+                                reindex: restored.is_none(),
                                 blocked: Vec::new(),
                             }
                         })

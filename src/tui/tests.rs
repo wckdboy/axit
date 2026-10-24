@@ -91,7 +91,7 @@ fn focus(app: &mut App, relative: &str) -> u32 {
 fn settle(app: &mut App) {
     for _ in 0..300 {
         app.messages();
-        if !app.busy && !app.searching {
+        if !app.busy && !app.searching && app.scan.is_none() {
             return;
         }
         thread::sleep(Duration::from_millis(10));
@@ -226,6 +226,59 @@ fn mouse_confirmation_and_undo_update_rows_without_starting_a_full_scan() {
     assert!(!app.hidden.contains(&file));
     assert!(app.ids.contains(&file));
     assert!(app.scan.is_none());
+}
+
+#[test]
+fn undo_after_a_rescan_refreshes_the_restored_file_and_survives_restart() {
+    let (_temp, mut app) = fixture(3);
+    let source = app.root.join("file-000.txt");
+    let destination = app.root.join("destination/file-000.txt");
+    let file = focus(&mut app, "file-000.txt");
+    let plan = ops::plan(
+        app.index.as_ref().unwrap(),
+        &[file],
+        Action::Move {
+            destination: app.root.join("destination").to_string_lossy().into(),
+        },
+        &app.state,
+        0,
+    )
+    .unwrap();
+    app.apply(plan, "MOVE".into());
+    settle(&mut app);
+    app.scan();
+    settle(&mut app);
+    assert!(app.index.as_ref().unwrap().find_path(&source).is_none());
+    assert!(!app.needs_rescan);
+
+    plain(&mut app, KeyCode::Char('u'));
+    settle(&mut app);
+    assert!(source.exists() && !destination.exists());
+    let restored = app.index.as_ref().unwrap().find_path(&source).unwrap();
+    assert!(app.ids.contains(&restored));
+    assert!(
+        app.index
+            .as_ref()
+            .unwrap()
+            .find_path(&destination)
+            .is_none()
+    );
+    let reopened = App::new(app.root.clone(), app.state.clone());
+    assert!(reopened.ids.contains(&restored));
+    assert!(!reopened.needs_rescan);
+}
+
+#[test]
+fn uncertain_operation_failures_keep_the_saved_index_marked_stale() {
+    let (_temp, mut app) = fixture(2);
+    app.tx
+        .send(Message::Applied(Err("Journal could not be saved".into())))
+        .unwrap();
+    app.messages();
+    assert!(app.needs_rescan);
+    assert!(matches!(&app.modal, Some(Modal::Notice(text)) if text.contains("Press r")));
+    let reopened = App::new(app.root.clone(), app.state.clone());
+    assert!(reopened.needs_rescan);
 }
 
 #[test]

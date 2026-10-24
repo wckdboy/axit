@@ -98,7 +98,9 @@ Mouse input requires a terminal that forwards mouse events. Use your terminal's
 selection modifier (commonly Shift) to select and copy text normally.
 
 Completed operations update rows immediately. Undo restores them without forcing a
-full disk scan. A notice identifies stale indexed sizes; press `r` when ready to
+full disk scan when the original path is still indexed. If you have rescanned since
+the move and its original path is absent, Undo starts a background refresh so the
+restored file reappears. A notice identifies stale indexed sizes; press `r` when ready to
 refresh. The current folder and cursor survive a refresh. A small private
 `tui-state.json` remembers removed rows for the matching index generation.
 

@@ -142,6 +142,7 @@ struct OperationUpdate {
     summary: String,
     hidden: Vec<u32>,
     restored: Option<u32>,
+    reindex: bool,
     blocked: Vec<ops::Blocked>,
 }
 
@@ -583,7 +584,10 @@ impl App {
                         Ok(update) => {
                             self.status = update.summary.clone();
                             self.activity.push(update.summary.clone());
-                            if !update.hidden.is_empty() || update.restored.is_some() {
+                            if update.reindex
+                                || !update.hidden.is_empty()
+                                || update.restored.is_some()
+                            {
                                 self.needs_rescan = true;
                             }
                             self.hidden.extend(update.hidden);
@@ -595,6 +599,10 @@ impl App {
                             let focused = self.focused();
                             let offset = self.table.offset();
                             self.refresh(focused, offset);
+                            if update.reindex {
+                                self.scan();
+                                self.status = format!("{} · refreshing index", update.summary);
+                            }
                             if !update.blocked.is_empty() {
                                 let details = update
                                     .blocked
@@ -610,7 +618,12 @@ impl App {
                         }
                         Err(error) => {
                             self.status = error.clone();
-                            self.open_modal(Modal::Notice(error));
+                            // A filesystem change can succeed before journal persistence fails.
+                            self.needs_rescan = true;
+                            self.save_overlay();
+                            self.open_modal(Modal::Notice(format!(
+                                "{error}\n\nSome paths may have changed. Press r to refresh the index."
+                            )));
                         }
                     }
                 }
@@ -665,6 +678,7 @@ impl App {
                         summary: message,
                         hidden,
                         restored: None,
+                        reindex: false,
                         blocked: r.blocked,
                     }
                 })
