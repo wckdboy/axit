@@ -94,6 +94,7 @@ pub struct Index {
     pub started: i64,
     pub finished: i64,
     pub errors: u64,
+    stamp: [u64; 5],
     names_start: usize,
 }
 
@@ -104,6 +105,7 @@ impl Index {
         // SCRY writes immutable generations and publishes them with an atomic rename.
         // It never truncates a published file. The private state directory is 0700.
         let map = unsafe { MmapOptions::new().map(&file)? };
+        let metadata = file.metadata()?;
         ensure!(
             map.len() >= HEADER && &map[..8] == MAGIC,
             "Invalid SCRY index header"
@@ -130,6 +132,13 @@ impl Index {
             started: u64_at(&map, 32) as i64,
             finished: u64_at(&map, 40) as i64,
             errors: u64_at(&map, 48),
+            stamp: [
+                metadata.dev(),
+                metadata.ino(),
+                metadata.mtime() as u64,
+                metadata.mtime_nsec() as u64,
+                metadata.len(),
+            ],
             names_start: start,
             map,
         };
@@ -163,6 +172,10 @@ impl Index {
 
     pub fn disk_bytes(&self) -> u64 {
         self.map.len() as u64
+    }
+
+    pub fn stamp(&self) -> [u64; 5] {
+        self.stamp
     }
 
     pub fn entry(&self, id: u32) -> Option<Entry> {
@@ -279,12 +292,14 @@ impl Index {
         }
         let relative = path.strip_prefix(&root).ok()?;
         let mut parent = 0;
+        let mut next = 1;
         for component in relative.components() {
             let name = component.as_os_str().as_bytes();
-            parent = (1..self.count).find(|id| {
+            parent = (next..self.count).find(|id| {
                 self.entry(*id)
                     .is_some_and(|e| e.parent == parent && self.name(e) == name)
             })?;
+            next = parent + 1;
         }
         Some(parent)
     }

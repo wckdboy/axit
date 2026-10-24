@@ -1,5 +1,6 @@
 /target/
 /dist/
+/.venv-ui/
 *.idx
 *.log
 .DS_Store

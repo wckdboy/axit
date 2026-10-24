@@ -28,7 +28,7 @@ From a source checkout with Rust 1.88 or newer:
 sh install.sh --local
 ```
 
-Set `SCRY_INSTALL_DIR` to change the install location, or `SCRY_VERSION=v0.1.0` to pin
+Set `SCRY_INSTALL_DIR` to change the install location, or `SCRY_VERSION=v0.2.0` to pin
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 ## Use
@@ -46,13 +46,39 @@ scry doctor                        # physical volumes and access failures
 
 TUI keys:
 
-- `1` Space, `2` Find, `3` Clean, `4` Activity.
-- `/` edits search; `Tab` moves between search and results.
-- Arrow keys or `j/k` navigate; `Enter` opens a folder; `Backspace` goes up.
-- `Space` selects; `Esc` clears selection.
-- `t` previews Trash, `m` previews a move, `x` verifies a disposable cache.
+- `1` Space, `2` Find, `3` Clean, `4` Activity; `Ctrl-Tab` cycles views.
+- `/` or `Ctrl-F` edits search; `Tab` / `Shift-Tab` cycles the query, results,
+  inspector and action buttons. Arrow keys choose a focused button; `Enter` activates it.
+- Arrow keys or `j/k` navigate; `Home` / `End` jumps; `PageUp` / `PageDown` moves a page.
+- `Enter` opens a folder or inspects a file; `Backspace` goes up. `Alt-Left` /
+  `Alt-Right` retraces history; `Alt-Up` goes up; `Alt-Home` returns to the scope root.
+- `Space` toggles a mark, `Shift-Up/Down` selects a range, `Ctrl-A` marks the listed
+  items, and `Esc` clears marks. Marks do not carry into another folder or query.
+- `Delete` / `t` previews Trash, `m` previews a move, `x` verifies a disposable cache.
 - `u` undoes a reversible move, `a` configures automatic cleanup, `r` rescans.
-- `s` cycles search sorting; `?` opens help; `Ctrl-Q` always quits.
+- `s` sorts the current list; `p` shows an item's containing folder.
+- `?` opens scrollable help; `q` / `Ctrl-Q` quits. An in-progress file operation
+  finishes before exit; canceling a preview never changes files.
+
+Mouse and touchpad:
+
+- Click tabs, breadcrumbs and action buttons. Buttons activate on release.
+- Click a row to focus it; double-click to open/inspect; right-click for item actions.
+- Click `[ ]` or Ctrl-click to toggle marks; Shift-click or drag selects a range.
+- Wheel / touchpad scrolling works in lists, the inspector and dialogs. The scrollbar
+  supports clicking and dragging.
+- A deletion opens a reviewed plan with Cancel selected. Click its explicit action
+  button, or use Tab/Enter, or type its confirmation phrase. Escape cancels.
+
+Search and destination fields support cursor editing, Unicode, horizontal scrolling
+and bracketed paste. `Ctrl-A/E` moves to the start/end; `Ctrl-U` clears the field.
+Mouse input requires a terminal that forwards mouse events. Use your terminal's
+selection modifier (commonly Shift) to select and copy text normally.
+
+Completed operations update rows immediately. Undo restores them without forcing a
+full disk scan. A notice identifies stale indexed sizes; press `r` when ready to
+refresh. The current folder and cursor survive a refresh. A small private
+`tui-state.json` remembers removed rows for the matching index generation.
 
 Search supports quoted terms, `*.zip` wildcards, `!excluded`, `re:expression`,
 `ext:pdf;png`, `type:file`, `type:dir`, `size:>2gib`, `older:30d` and `path:project`.
@@ -79,7 +105,8 @@ simulator images are separate views of backing files, rather than additional cap
 ## File operations
 
 Every operation starts with a preview. Nothing selected is moved or removed when a
-plan is created. Applying requires the exact `CLEAN`, `TRASH` or `MOVE` confirmation.
+plan is created. In the TUI, confirm its explicit action button or type `CLEAN`,
+`TRASH` or `MOVE`. CLI and MCP calls require the exact confirmation phrase.
 Plans expire after ten minutes and recheck file identity and active processes.
 
 ```sh
@@ -199,6 +226,9 @@ cargo test --locked --jobs 2 -- --test-threads=1
 cargo build --release --locked --jobs 2
 python3 scripts/protocol-test.py target/release/scry
 sh scripts/installer-test.sh target/release/scry
+python3 -m venv .venv-ui
+.venv-ui/bin/pip install pyte==0.8.2
+.venv-ui/bin/python scripts/tui-test.py target/release/scry
 ```
 
 The release workflow packages all four targets and SHA-256 manifests. Development

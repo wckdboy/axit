@@ -22,4 +22,9 @@ jobs:
       - run: cargo build --release --locked --jobs 2
       - run: python3 scripts/protocol-test.py target/release/scry
       - run: sh scripts/installer-test.sh target/release/scry
+      - name: Terminal keyboard and mouse integration
+        run: |
+          python3 -m venv .venv-ui
+          .venv-ui/bin/pip install pyte==0.8.2
+          .venv-ui/bin/python scripts/tui-test.py target/release/scry
 
