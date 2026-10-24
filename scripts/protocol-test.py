@@ -125,22 +125,30 @@ with tempfile.TemporaryDirectory(prefix='scry-protocol-') as temporary:
     check(not restored['isError'] and (root/'move-me.txt').read_text() == 'recover me', 'Undo failed')
     writable.close()
 
-    # Trash tests use a fake home, never the real user's Trash.
-    fake_home=base/'fake-home'
-    fake_home.mkdir()
-    fake_env=dict(os.environ, HOME=str(fake_home), XDG_DATA_HOME=str(fake_home/'.local/share'))
+    # Trash tests use a private recovery fixture, never the real user's Trash.
+    fake_trash=base/'trash-fixture'
+    fake_env=dict(os.environ, SCRY_TRASH_DIR=str(fake_trash))
     trash=Client([*args,'mcp','--allow-mutations'],env=fake_env)
     trash.request('initialize',{'protocolVersion':'2025-11-25'})
     entry=trash.tool('scry_search',{'query':'move-me.txt'})['structuredContent']['entries'][0]
     plan=trash.tool('scry_trash_plan',{'entry_ids':[entry['id']]})['structuredContent']
     result=trash.tool('scry_apply_plan',{'plan_id':plan['id'],'confirm':'TRASH'})
     check(not result['isError'] and len(result['structuredContent']['completed'])==1,result)
+    check(fake_trash.stat().st_mode & 0o077 == 0, 'Recovery directory is not private')
+    check(len(list((fake_trash/'files').iterdir())) == 1, 'Custom recovery files escaped their root')
     check(not (root/'move-me.txt').exists(),'Trash did not move the fixture')
     if sys.platform.startswith('linux'):
-        info=list((fake_home/'.local/share/Trash/info').glob('*.trashinfo'))
+        info=list((fake_trash/'info').glob('*.trashinfo'))
         check(len(info)==1 and '[Trash Info]' in info[0].read_text(),'Freedesktop Trash metadata missing')
+    check(not (fake_trash.parent/'info').exists(), 'Trash metadata escaped the custom recovery root')
     result=trash.tool('scry_undo')
     check(not result['isError'] and (root/'move-me.txt').read_text()=='recover me','Scoped Trash undo failed')
+    fake_trash.chmod(0o755)
+    plan=trash.tool('scry_trash_plan',{'entry_ids':[entry['id']]})['structuredContent']
+    result=trash.tool('scry_apply_plan',{'plan_id':plan['id'],'confirm':'TRASH'})
+    check(not result['structuredContent']['completed'] and result['structuredContent']['blocked'], 'Public recovery folder accepted')
+    check((root/'move-me.txt').read_text()=='recover me', 'Blocked Trash changed the source')
+    fake_trash.chmod(0o700)
     trash.close()
 
     acp = Client([*args, 'acp'])

@@ -44,6 +44,7 @@ with tempfile.TemporaryDirectory(prefix='scry-ui-', dir='/tmp') as temporary:
         fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
     restore_file=base/'restored-terminal.txt'
     env = dict(os.environ, TERM='xterm-256color', COLORTERM='truecolor',SCRY_TEST_RESTORE=str(restore_file))
+    env.pop('NO_COLOR', None)  # Exercise the theme even from a monochrome CI shell.
     wrapper='"$@"\nscry_test_status=$?\nstty -g > "$SCRY_TEST_RESTORE"\nexit "$scry_test_status"\n'
     process = subprocess.Popen(['/bin/sh','-c',wrapper,'scry-ui-test',*args], stdin=slave, stdout=slave, stderr=slave,
                                preexec_fn=terminal_session, close_fds=True, env=env)
@@ -79,6 +80,7 @@ with tempfile.TemporaryDirectory(prefix='scry-ui-', dir='/tmp') as temporary:
         pump(1)
         assert 'SCRY' in content() and 'WCKD.ai' in content(), content()
         assert 'downloads' in content(), content()
+        assert len({cell.fg for row in screen.buffer.values() for cell in row.values()}) >= 5, 'Theme colors were not emitted'
         snapshot('space')
         key(b'/budget')
         assert 'budget.txt' in content() and '1 matches' in content(), content()

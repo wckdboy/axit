@@ -6,6 +6,8 @@ SCRY combines indexed filename search, a storage browser, file organization and 
 cache cleanup in a small Rust binary. Everything runs locally. No account, model,
 telemetry, network service or file-content indexing is required.
 
+![SCRY terminal storage browser, captured with temporary test fixtures](assets/tui.svg)
+
 ## Install
 
 Release packages support Apple Silicon, Intel Macs, Linux ARM64 and Linux x86-64.
@@ -16,6 +18,9 @@ installing to `~/.local/bin`; it does not modify your shell configuration or run
 sh install.sh
 scry
 ```
+
+Start with `gh repo clone wckdboy/scry && cd scry` if you do not have a checkout.
+Release downloads need no Rust toolchain.
 
 For a private GitHub release, the installer uses your existing `gh` authentication.
 Public releases use HTTPS downloads when `gh` is unavailable.
@@ -95,6 +100,9 @@ ownership, cache/project markers, Git-ignored status where applicable, no tracke
 source, age checks and no current-user active files/builds. Cache fingerprints are
 checked before and after an exclusive claim. Source markers, releases, archives,
 signing files, model weights, symlinks and special files block permanent cleanup.
+Whole Rust target directories are never permanently cleaned. This preserves custom
+release profiles and packages with unfamiliar extensions. Debug and incremental
+compiler caches can be cleaned independently.
 Shared external Rust targets are left for manual review.
 
 `lsof` is required for file mutations. If process inspection fails, mutations are blocked;
@@ -165,13 +173,25 @@ not advertised or launched by this adapter.
 - Original filenames and parent ids stored once; no database server or full-path index.
 - Immutable generations are memory mapped for search and published atomically.
 - Search runs outside the UI thread and cancels superseded queries.
-- At most 1 GiB per index; temporary construction can briefly use twice that space.
+- At most 1 GiB per index; refreshing keeps the previous generation plus up to
+  2 GiB of temporary construction space until publication completes.
 - Previous complete index survives cancellation, invalid output or a failed rebuild.
 - Private state directory permissions are `0700`; index and operation records are private.
 
 State defaults to `~/Library/Application Support/ai.wckd.scry` on macOS and
 `$XDG_STATE_HOME/scry` or `~/.local/state/scry` on Linux. Override with `--state-dir`
 or `SCRY_STATE_DIR`. File contents and credentials are never included in the index.
+`SCRY_TRASH_DIR` selects a dedicated recovery root instead of the system Trash; it is
+also used by isolated integration tests. Files stay inside its `files/` directory;
+Linux metadata stays inside its `info/` directory. Recovery directories must be owned
+and private (`0700`); SCRY rejects publicly accessible destinations without changing
+their permissions. The operation journal provides undo.
+
+On the development Mac, a 5.98-million-entry index used 490 MiB on disk. Seven
+representative searches took 20–181 ms (median of three runs each) over a persistent
+MCP connection. The initial metadata scan took 297 seconds, including access errors
+and cloud-file timeouts. These are measurements from one busy machine; filesystem,
+query and storage performance affect results.
 
 ## Build and verify
 

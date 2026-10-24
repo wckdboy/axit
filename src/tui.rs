@@ -151,21 +151,7 @@ impl App {
                     if !e.is_dir() || e.allocated == 0 || self.hidden.contains(&id) {
                         continue;
                     }
-                    let name = index.name(e);
-                    if ![
-                        b"target".as_slice(),
-                        b"incremental",
-                        b".cxx",
-                        b".gradle",
-                        b"intermediates",
-                        b"Intermediates.noindex",
-                        b"Index.noindex",
-                        b"ModuleCache.noindex",
-                        b"SDKStatCaches.noindex",
-                        b"SDKExplicitPrecompiledModules",
-                    ]
-                    .contains(&name)
-                    {
+                    if !ops::cache_candidate(index, e) {
                         continue;
                     }
                     if index.path(id).is_ok_and(|p| ops::cache_label(&p).is_some()) {
@@ -1100,19 +1086,7 @@ fn draw_modal(frame: &mut Frame, area: Rect, app: &App, modal: &Modal) {
             let path=app.index.as_ref().and_then(|i|i.path(app.folder).ok()).unwrap_or(app.root.clone());
             (" Automatic space saving ",vec![format!("Currently {}",if policy.enabled{"ENABLED"}else{"OFF"}),"".into(),format!("Folder: {}",crate::text(&path)),"".into(),"Verified generated caches only · minimum age 7 days".into(),"At most 2 GiB per run · only below 20 GiB free".into(),"At most once a day · only while SCRY is running".into(),"Source, models, releases, keys and active builds are protected.".into(),"".into(),"Enabling authorizes permanent removal of eligible caches in this folder.".into(),"Entire home/disk roots are not allowed.".into(),"".into(),format!("Enter to {} · Esc cancels",if policy.enabled{"disable"}else{"enable for this folder"})])
         }
-        Modal::Preview(plan,input)=>{
-            let action=if plan.action==Action::Clean{"PERMANENT CACHE CLEANUP"}else if plan.action==Action::Trash{"MOVE TO TRASH"}else{"MOVE"};
-            let phrase=if plan.action==Action::Clean{"CLEAN"}else if plan.action==Action::Trash{"TRASH"}else{"MOVE"};
-            let mut lines=vec![format!("{action} · {} eligible · {} blocked",plan.entries.len(),plan.blocked.len()),format!("{} allocated · expires after 10 minutes",bytes(plan.total_bytes)),"".into()];
-            for e in plan.entries.iter().take(6){lines.push(format!("{}  {}",bytes(e.bytes),e.path));}
-            for e in plan.blocked.iter().take(5){lines.push(format!("BLOCKED {} · {}",e.path,e.reason));}
-            lines.push("".into());
-            if plan.action==Action::Clean{lines.push("Caches are deleted permanently. Future builds may take longer.".into());}
-            else if plan.action==Action::Trash{lines.push("Trash is reversible and does not immediately free space.".into());}
-            else{lines.push("Move is reversible. Existing destinations are never overwritten.".into());}
-            lines.extend([format!("Type {phrase}, then Enter. Esc cancels."),format!("> {input}")]);
-            (" Review plan ",lines)
-        }
+        Modal::Preview(..)=>return,
     };
     frame.render_widget(
         Paragraph::new(lines.into_iter().map(Line::raw).collect::<Vec<_>>())

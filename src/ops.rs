@@ -8,7 +8,7 @@ use std::{
     io::Write,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
-        fs::{MetadataExt, PermissionsExt},
+        fs::{DirBuilderExt, MetadataExt, PermissionsExt},
     },
     path::{Path, PathBuf},
     process::Command,
@@ -117,7 +117,17 @@ pub fn decode(value: &str) -> Result<PathBuf> {
 }
 
 fn private_dir(path: &Path) -> Result<()> {
-    fs::create_dir_all(path)?;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)?;
+    let metadata = fs::symlink_metadata(path)?;
+    ensure!(
+        metadata.is_dir()
+            && !metadata.file_type().is_symlink()
+            && metadata.uid() == unsafe { libc::geteuid() },
+        "Private state directory must be an owned directory, not a symlink"
+    );
     fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
     Ok(())
 }
@@ -202,13 +212,29 @@ fn identity_path(path: &Path, root: &Path) -> Result<Metadata> {
 
 pub fn cache_label(path: &Path) -> Option<&'static str> {
     let name = path.file_name()?.as_bytes();
-    if name == b"target" || name == b"incremental" {
+    let parent = path.parent()?.file_name().unwrap_or_default().as_bytes();
+    cache_kind(name, parent)
+}
+
+pub fn cache_candidate(index: &Index, entry: crate::index::Entry) -> bool {
+    let parent = index
+        .entry(entry.parent)
+        .map(|e| index.name(e))
+        .unwrap_or_default();
+    cache_kind(index.name(entry), parent).is_some()
+}
+
+fn cache_kind(name: &[u8], parent: &[u8]) -> Option<&'static str> {
+    if name == b"incremental"
+        || (name == b"debug" && parent == b"target")
+        || parent == b"incremental"
+    {
         Some("Rust compiler cache")
     } else if name == b".cxx" {
         Some("Android native build cache")
     } else if name == b".gradle" {
         Some("Project Gradle cache")
-    } else if name == b"intermediates" && path.parent()?.file_name()?.as_bytes() == b"build" {
+    } else if name == b"intermediates" && parent == b"build" {
         Some("Android build intermediates")
     } else if [
         b"Intermediates.noindex".as_slice(),
@@ -226,7 +252,22 @@ pub fn cache_label(path: &Path) -> Option<&'static str> {
 }
 
 fn git_generated(path: &Path, project: &Path) -> Result<()> {
-    let identity = Command::new("git")
+    let git = || {
+        let mut c = Command::new("git");
+        for (key, _) in std::env::vars_os() {
+            if key.as_bytes().starts_with(b"GIT_") {
+                c.env_remove(key);
+            }
+        }
+        c.args(["-c", "core.fsmonitor=false"])
+            .current_dir(project)
+            .env("GIT_OPTIONAL_LOCKS", "0");
+        c
+    };
+    let relative = path
+        .strip_prefix(project)
+        .context("Cache is outside its project")?;
+    let identity = git()
         .args(["rev-parse", "--show-toplevel"])
         .current_dir(project)
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -235,9 +276,9 @@ fn git_generated(path: &Path, project: &Path) -> Result<()> {
         identity.status.success(),
         "No Git working copy found; generated status cannot be proven"
     );
-    let tracked = Command::new("git")
-        .args(["ls-files", "-z", "--"])
-        .arg(path)
+    let tracked = git()
+        .args(["--literal-pathspecs", "ls-files", "-z", "--"])
+        .arg(relative)
         .current_dir(project)
         .env("GIT_OPTIONAL_LOCKS", "0")
         .output()?;
@@ -245,9 +286,9 @@ fn git_generated(path: &Path, project: &Path) -> Result<()> {
         tracked.status.success() && tracked.stdout.is_empty(),
         "Contains tracked source files"
     );
-    let ignored = Command::new("git")
+    let ignored = git()
         .args(["check-ignore", "-q", "--"])
-        .arg(path)
+        .arg(relative)
         .current_dir(project)
         .env("GIT_OPTIONAL_LOCKS", "0")
         .status()?;
@@ -334,6 +375,8 @@ fn cache_fingerprint(root: &Path, min_age: i64) -> Result<(String, u64)> {
             .to_ascii_lowercase();
         let reserved = [
             ".git",
+            ".ssh",
+            ".gnupg",
             ".env",
             "outputs",
             "release",
@@ -341,6 +384,8 @@ fn cache_fingerprint(root: &Path, min_age: i64) -> Result<(String, u64)> {
             "archives",
             "models",
             "credentials",
+            "id_rsa",
+            "id_ed25519",
             "cargo.toml",
             "package.json",
         ];
@@ -352,6 +397,23 @@ fn cache_fingerprint(root: &Path, min_age: i64) -> Result<(String, u64)> {
             ".xcarchive",
             ".zip",
             ".tar.gz",
+            ".tar",
+            ".tar.xz",
+            ".tar.zst",
+            ".7z",
+            ".rar",
+            ".app",
+            ".pkg",
+            ".deb",
+            ".rpm",
+            ".appimage",
+            ".msi",
+            ".msix",
+            ".snap",
+            ".flatpak",
+            ".whl",
+            ".gem",
+            ".jar",
             ".tgz",
             ".jks",
             ".keystore",
@@ -363,7 +425,9 @@ fn cache_fingerprint(root: &Path, min_age: i64) -> Result<(String, u64)> {
             ".onnx",
         ];
         ensure!(
-            !reserved.contains(&name.as_str()) && !suffixes.iter().any(|s| name.ends_with(s)),
+            !reserved.contains(&name.as_str())
+                && !name.starts_with(".env.")
+                && !suffixes.iter().any(|s| name.ends_with(s)),
             "Contains source markers, packages, keys or model data"
         );
         hash.update(path.strip_prefix(root)?.as_os_str().as_bytes());
@@ -557,7 +621,10 @@ pub fn rename_exclusive(source: &Path, destination: &Path) -> Result<()> {
     let result = unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), libc::RENAME_EXCL) };
     #[cfg(target_os = "linux")]
     let result = unsafe {
-        libc::renameat2(
+        // Call the kernel directly: Rust's bundled musl does not export the
+        // renameat2 wrapper on every supported target. No overwrite fallback.
+        libc::syscall(
+            libc::SYS_renameat2,
             libc::AT_FDCWD,
             from.as_ptr(),
             libc::AT_FDCWD,
@@ -572,6 +639,12 @@ pub fn rename_exclusive(source: &Path, destination: &Path) -> Result<()> {
 }
 
 fn trash_base() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("SCRY_TRASH_DIR") {
+        let path = PathBuf::from(path);
+        ensure!(path.is_absolute(), "SCRY_TRASH_DIR must be absolute");
+        recovery_dir(&path)?;
+        return Ok(path.canonicalize()?.join("files"));
+    }
     Ok(if cfg!(target_os = "macos") {
         crate::home()?.join(".Trash")
     } else {
@@ -584,14 +657,7 @@ fn trash_base() -> Result<PathBuf> {
 
 fn trash_destination(path: &Path, id: &str) -> Result<PathBuf> {
     let base = trash_base()?;
-    fs::create_dir_all(&base)?;
-    let metadata = fs::symlink_metadata(&base)?;
-    ensure!(
-        metadata.is_dir()
-            && !metadata.file_type().is_symlink()
-            && metadata.uid() == unsafe { libc::geteuid() },
-        "Trash directory is not a private, owned directory"
-    );
+    recovery_dir(&base)?;
     let filename = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -608,14 +674,30 @@ fn trash_destination(path: &Path, id: &str) -> Result<PathBuf> {
     Ok(base.join(name))
 }
 
-#[cfg(target_os = "linux")]
+fn recovery_dir(base: &Path) -> Result<()> {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(base)?;
+    let metadata = fs::symlink_metadata(base)?;
+    ensure!(
+        metadata.is_dir()
+            && !metadata.file_type().is_symlink()
+            && metadata.uid() == unsafe { libc::geteuid() }
+            && metadata.mode() & 0o077 == 0,
+        "Trash directory is not a private, owned directory"
+    );
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", test))]
 fn trash_info(source: &Path, destination: &Path) -> Result<PathBuf> {
     let info = destination
         .parent()
         .and_then(Path::parent)
         .context("Invalid Trash path")?
         .join("info");
-    private_dir(&info)?;
+    recovery_dir(&info)?;
     let mut name = destination
         .file_name()
         .context("Missing trash name")?
@@ -630,7 +712,7 @@ fn trash_info(source: &Path, destination: &Path) -> Result<PathBuf> {
             encoded.push_str(&format!("%{b:02X}"));
         }
     }
-    let seconds = crate::unix_now() as libc::time_t;
+    let seconds = crate::unix_now();
     let mut tm = std::mem::MaybeUninit::<libc::tm>::uninit();
     ensure!(
         !unsafe { libc::localtime_r(&seconds, tm.as_mut_ptr()) }.is_null(),
@@ -1023,25 +1105,13 @@ pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
         {
             continue;
         }
-        let name = index.name(e);
-        if ![
-            b"target".as_slice(),
-            b"incremental",
-            b".cxx",
-            b".gradle",
-            b"intermediates",
-            b"Intermediates.noindex",
-            b"Index.noindex",
-            b"ModuleCache.noindex",
-            b"SDKStatCaches.noindex",
-            b"SDKExplicitPrecompiledModules",
-        ]
-        .contains(&name)
-        {
+        if !cache_candidate(index, e) {
             continue;
         }
         let path = index.path(id)?;
-        if roots.iter().any(|root| path.starts_with(root)) && cache_label(&path).is_some() {
+        if roots.iter().any(|root| path.starts_with(root))
+            && !ids.iter().any(|parent| index.is_descendant(id, *parent))
+        {
             ids.push(id);
             estimate += e.allocated;
         }
@@ -1065,4 +1135,51 @@ pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
         return Ok(None);
     }
     Ok(Some(apply(state, &plan, "CLEAN")?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn freedesktop_metadata_stays_inside_the_private_recovery_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("recovery");
+        recovery_dir(&root.join("files")).unwrap();
+        let source = temp.path().join("source #.txt");
+        fs::write(&source, b"keep").unwrap();
+        let outside = temp.path().join("info");
+        fs::create_dir(&outside).unwrap();
+        fs::set_permissions(&outside, fs::Permissions::from_mode(0o755)).unwrap();
+        let info = trash_info(&source, &root.join("files/scry-example")).unwrap();
+        assert_eq!(info, root.join("info/scry-example.trashinfo"));
+        let text = fs::read_to_string(&info).unwrap();
+        assert!(text.starts_with("[Trash Info]\nPath="));
+        assert!(text.contains("source%20%23.txt\nDeletionDate="));
+        assert_eq!(fs::metadata(info).unwrap().mode() & 0o077, 0);
+        assert_eq!(fs::metadata(outside).unwrap().mode() & 0o777, 0o755);
+        assert_eq!(fs::read(source).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn trash_metadata_rejects_shared_or_symlinked_folders_without_chmod() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("recovery");
+        recovery_dir(&root.join("files")).unwrap();
+        let source = temp.path().join("source.txt");
+        fs::write(&source, b"keep").unwrap();
+        let info = root.join("info");
+        fs::create_dir(&info).unwrap();
+        fs::set_permissions(&info, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(trash_info(&source, &root.join("files/scry-example")).is_err());
+        assert_eq!(fs::metadata(&info).unwrap().mode() & 0o777, 0o755);
+        fs::remove_dir(&info).unwrap();
+        let outside = temp.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::set_permissions(&outside, fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink(&outside, &info).unwrap();
+        assert!(trash_info(&source, &root.join("files/scry-example")).is_err());
+        assert_eq!(fs::metadata(outside).unwrap().mode() & 0o777, 0o755);
+        assert_eq!(fs::read(source).unwrap(), b"keep");
+    }
 }

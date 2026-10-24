@@ -8,7 +8,12 @@ scry_install=${SCRY_INSTALL_DIR:-"$HOME/.local/bin"}
 scry_source=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scry_mode=${1:-release}
 scry_tmp=$(mktemp -d "${TMPDIR:-/tmp}/scry-install.XXXXXXXX")
-trap 'rm -rf -- "$scry_tmp"' EXIT HUP INT TERM
+scry_staged=
+scry_cleanup() {
+  rm -rf -- "$scry_tmp"
+  if [ -n "$scry_staged" ]; then rm -f -- "$scry_staged"; fi
+}
+trap scry_cleanup EXIT HUP INT TERM
 
 case "$(uname -s)/$(uname -m)" in
   Darwin/arm64) scry_target=aarch64-apple-darwin ;;
@@ -58,10 +63,12 @@ chmod 755 "$scry_tmp/scry"
 mkdir -p -- "$scry_install"
 [ ! -L "$scry_install/scry" ] || { printf '%s\n' 'Existing scry is a symlink; choose SCRY_INSTALL_DIR explicitly.' >&2; exit 1; }
 [ ! -e "$scry_install/scry" ] || [ -f "$scry_install/scry" ] || { printf '%s\n' 'Existing scry is not a regular file; nothing installed.' >&2; exit 1; }
-cp -- "$scry_tmp/scry" "$scry_install/.scry-new-$$"
-chmod 755 "$scry_install/.scry-new-$$"
-mv -f -- "$scry_install/.scry-new-$$" "$scry_install/scry"
+scry_staged=$(mktemp "$scry_install/.scry-new.XXXXXXXX")
+cp -- "$scry_tmp/scry" "$scry_staged"
+chmod 755 "$scry_staged"
+mv -f -- "$scry_staged" "$scry_install/scry"
+scry_staged=
 printf 'Installed %s\n' "$scry_install/scry"
 case ":$PATH:" in *":$scry_install:"*) printf '%s\n' 'Run: scry' ;; *) printf 'Run: %s/scry\nAdd %s to your PATH for the shorter command.\n' "$scry_install" "$scry_install" ;; esac
-printf '%s\n' 'Automatic cleanup is off. No user files were scanned, moved or deleted during installation.'
+printf '%s\n' 'Automatic cleanup is off by default; existing preferences are preserved.' 'No user files were scanned, moved or deleted during installation.'
 

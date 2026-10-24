@@ -402,6 +402,40 @@ fn automatic_cleanup_is_disabled_by_default_and_rejects_broad_scopes() {
 }
 
 #[test]
+fn automatic_cleanup_only_removes_old_debug_cache_and_obeys_its_cooldown() {
+    let (_t, root, state, cache) = rust_cache();
+    let release = root.join("target/release");
+    fs::create_dir(&release).unwrap();
+    fs::write(release.join("published.unknown"), b"keep release").unwrap();
+    let old = fs::FileTimes::new()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 86400));
+    for path in [
+        cache.join("work-products.bin"),
+        cache.clone(),
+        root.join("target/debug"),
+    ] {
+        fs::File::open(path).unwrap().set_times(old).unwrap();
+    }
+    let index = scan(&root, &state);
+    let policy = ops::AutoPolicy {
+        enabled: true,
+        roots: vec![root.to_string_lossy().into()],
+        below_free_bytes: u64::MAX,
+        ..Default::default()
+    };
+    ops::save_auto(&state, &policy).unwrap();
+    let result = ops::auto_run(&state, &index).unwrap().unwrap();
+    assert_eq!(result.completed.len(), 1, "{:?}", result.blocked);
+    assert!(!root.join("target/debug").exists());
+    assert_eq!(
+        fs::read(release.join("published.unknown")).unwrap(),
+        b"keep release"
+    );
+    assert!(root.join("source.rs").exists());
+    assert!(ops::auto_run(&state, &index).unwrap().is_none());
+}
+
+#[test]
 fn tui_renders_small_and_wide_terminals_without_panicking() {
     let (_t, root, state) = fixture();
     fs::write(root.join("hello.txt"), b"hello").unwrap();
@@ -495,4 +529,77 @@ fn deleted_parent_hides_its_indexed_descendants() {
             .iter()
             .all(|id| !index.is_descendant(*id, parent))
     );
+}
+
+#[test]
+fn cargo_release_profiles_survive_cleanup_while_debug_caches_remain_eligible() {
+    let (_t, root, state, _cache) = rust_cache();
+    let target = root.join("target");
+    fs::create_dir_all(target.join("release")).unwrap();
+    for name in [
+        "program",
+        "published.deb",
+        "published.rpm",
+        "future-package.unknown",
+    ] {
+        fs::write(target.join("release").join(name), b"release output").unwrap();
+    }
+    let index = scan(&root, &state);
+    let id = index.find_path(&target).unwrap();
+    let plan = ops::plan(&index, &[id], Action::Clean, &state, 0).unwrap();
+    assert!(plan.entries.is_empty());
+    assert!(!plan.blocked.is_empty());
+    let debug = target.join("debug");
+    let entry = index.entry(index.find_path(&debug).unwrap()).unwrap();
+    assert!(ops::cache_candidate(&index, entry));
+    let plan = ops::plan(&index, &[entry.id], Action::Clean, &state, 0).unwrap();
+    assert_eq!(plan.entries.len(), 1, "{:?}", plan.blocked);
+    let applied = ops::apply(&state, &plan, "CLEAN").unwrap();
+    assert_eq!(applied.completed.len(), 1, "{:?}", applied.blocked);
+    assert!(!debug.exists());
+    for name in [
+        "program",
+        "published.deb",
+        "published.rpm",
+        "future-package.unknown",
+    ] {
+        assert_eq!(
+            fs::read(target.join("release").join(name)).unwrap(),
+            b"release output"
+        );
+    }
+    assert!(root.join("source.rs").exists());
+    fs::rename(target.join("release"), target.join("release-lto")).unwrap();
+    let index = scan(&root, &state);
+    let plan = ops::plan(
+        &index,
+        &[index.find_path(&target).unwrap()],
+        Action::Clean,
+        &state,
+        0,
+    )
+    .unwrap();
+    assert!(
+        plan.entries.is_empty(),
+        "A custom release profile must not permit whole-target cleanup"
+    );
+    assert_eq!(
+        fs::read(target.join("release-lto/program")).unwrap(),
+        b"release output"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn cache_cleanup_works_through_the_data_volume_alias() {
+    let (_t, root, state, cache) = rust_cache();
+    let alias = Path::new("/System/Volumes/Data").join(root.strip_prefix("/").unwrap());
+    let index = scan(&alias, &state);
+    let id = index.find_path(&cache).unwrap();
+    let plan = ops::plan(&index, &[id], Action::Clean, &state, 0).unwrap();
+    assert_eq!(plan.entries.len(), 1, "{:?}", plan.blocked);
+    let result = ops::apply(&state, &plan, "CLEAN").unwrap();
+    assert_eq!(result.completed.len(), 1, "{:?}", result.blocked);
+    assert!(!cache.exists());
+    assert!(root.join("source.rs").exists());
 }
