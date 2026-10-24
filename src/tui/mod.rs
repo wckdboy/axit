@@ -517,7 +517,9 @@ impl App {
                                 self.modal = None;
                             }
                             self.load_coverage();
+                            let focus = self.focus;
                             self.restore_location(location);
+                            self.focus = focus;
                             let index = self.index.as_ref().unwrap();
                             self.status = format!(
                                 "Indexed {} entries · {} restricted/missing",

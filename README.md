@@ -94,6 +94,7 @@ Mouse and touchpad:
 
 Search and destination fields support cursor editing, Unicode, horizontal scrolling
 and bracketed paste. `Ctrl-A/E` moves to the start/end; `Ctrl-U` clears the field.
+Background scans preserve your current input focus and query.
 Mouse input requires a terminal that forwards mouse events. Use your terminal's
 selection modifier (commonly Shift) to select and copy text normally.
 

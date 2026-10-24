@@ -359,6 +359,22 @@ fn rescan_keeps_the_current_folder_and_invalidates_only_old_overlay_ids() {
 }
 
 #[test]
+fn background_scans_preserve_query_focus_and_do_not_turn_typing_into_commands() {
+    let (_temp, mut app) = fixture(4);
+    plain(&mut app, KeyCode::Char('/'));
+    app.handle_event(Event::Paste("file-".into()));
+    app.scan();
+    settle(&mut app);
+    assert_eq!(app.focus, Focus::Query);
+    for letter in "qmax".chars() {
+        assert!(!plain(&mut app, KeyCode::Char(letter)));
+    }
+    assert_eq!(app.query.text, "file-qmax");
+    assert!(app.modal.is_none());
+    settle(&mut app);
+}
+
+#[test]
 fn editor_handles_unicode_insertion_deletion_and_horizontal_scrolling() {
     use unicode_width::UnicodeWidthStr;
     let mut input = Editor::new("héllo猫".into());
