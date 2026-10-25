@@ -91,7 +91,13 @@ fn focus(app: &mut App, relative: &str) -> u32 {
 fn settle(app: &mut App) {
     for _ in 0..300 {
         app.messages();
-        if !app.busy && !app.searching && app.scan.is_none() {
+        if !app.busy
+            && !app.searching
+            && !app.search_inflight
+            && !app.listing
+            && !app.list_inflight
+            && app.scan.is_none()
+        {
             return;
         }
         thread::sleep(Duration::from_millis(10));
@@ -205,12 +211,12 @@ fn mouse_confirmation_and_undo_update_rows_without_starting_a_full_scan() {
         0,
     )
     .unwrap();
-    app.open_modal(Modal::Preview(Box::new(plan.clone()), Editor::default()));
+    app.open_modal(Modal::Preview(Box::new(plan.clone())));
     render(&mut app, 80, 24);
     plain(&mut app, KeyCode::Enter);
     assert!(app.modal.is_none());
     assert!(source.exists());
-    app.open_modal(Modal::Preview(Box::new(plan), Editor::default()));
+    app.open_modal(Modal::Preview(Box::new(plan)));
     render(&mut app, 80, 24);
     click(&mut app, Hit::ModalConfirm);
     settle(&mut app);
@@ -317,7 +323,7 @@ fn uncertain_per_entry_failures_mark_the_index_stale_without_completed_paths() {
 fn modal_clicks_are_trapped_and_long_content_keeps_controls_visible() {
     let (_temp, mut app) = fixture(4);
     render(&mut app, 80, 24);
-    let background = point(&app, Hit::View(View::Find));
+    let background = point(&app, Hit::Row(0));
     app.open_modal(Modal::Help);
     let text = render(&mut app, 48, 14);
     assert!(text.contains("Close"));
@@ -470,7 +476,7 @@ fn releasing_outside_a_confirmation_button_cancels_the_click() {
         0,
     )
     .unwrap();
-    app.open_modal(Modal::Preview(Box::new(plan), Editor::default()));
+    app.open_modal(Modal::Preview(Box::new(plan)));
     render(&mut app, 80, 24);
     let confirm = point(&app, Hit::ModalConfirm);
     let cancel = point(&app, Hit::ModalCancel);
@@ -583,12 +589,248 @@ fn an_entirely_blocked_plan_only_focuses_its_close_button() {
     )
     .unwrap();
     assert!(plan.entries.is_empty());
-    app.open_modal(Modal::Preview(Box::new(plan), Editor::default()));
+    app.open_modal(Modal::Preview(Box::new(plan)));
     render(&mut app, 80, 24);
     plain(&mut app, KeyCode::Right);
     plain(&mut app, KeyCode::Tab);
     assert_eq!(app.modal_focus, 0);
     app.handle_event(Event::Paste("CLEAN".into()));
     assert_eq!(app.modal_focus, 0);
-    assert!(matches!(app.modal,Some(Modal::Preview(_,ref input)) if input.text.is_empty()));
+    assert!(matches!(app.modal,Some(Modal::Preview(ref plan)) if plan.entries.is_empty()));
+}
+
+#[test]
+fn number_navigation_and_focus_shortcuts_never_require_escape() {
+    let (_temp, mut app) = fixture(4);
+    for _ in 0..3 {
+        for (digit, view) in [
+            ('1', View::Space),
+            ('2', View::Find),
+            ('3', View::Clean),
+            ('4', View::Activity),
+        ] {
+            plain(&mut app, KeyCode::Char(digit));
+            assert_eq!(app.view, view);
+            assert_eq!(app.focus, Focus::Nav);
+            assert!(app.modal.is_none());
+        }
+    }
+    key(&mut app, KeyCode::PageDown, KeyModifiers::CONTROL);
+    assert_eq!(app.view, View::Space);
+    key(
+        &mut app,
+        KeyCode::BackTab,
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    );
+    assert_eq!(app.view, View::Activity);
+    plain(&mut app, KeyCode::F(6));
+    assert_eq!(app.focus, Focus::Nav);
+    plain(&mut app, KeyCode::Home);
+    plain(&mut app, KeyCode::Right);
+    assert_eq!(app.view, View::Find);
+    plain(&mut app, KeyCode::Tab);
+    assert_eq!(app.focus, Focus::Query);
+    for digit in "1234".chars() {
+        plain(&mut app, KeyCode::Char(digit));
+    }
+    assert_eq!(app.query.text, "1234");
+    plain(&mut app, KeyCode::F(6));
+    plain(&mut app, KeyCode::Right);
+    assert_eq!(app.view, View::Clean);
+    settle(&mut app);
+}
+
+#[test]
+fn global_section_shortcuts_cancel_every_dialog_without_mutating_files() {
+    let (_temp, mut app) = fixture(2);
+    let file = focus(&mut app, "file-000.txt");
+    let plan = ops::plan(
+        app.index.as_ref().unwrap(),
+        &[file],
+        Action::Trash,
+        &app.state,
+        0,
+    )
+    .unwrap();
+    let dialogs = vec![
+        Modal::Help,
+        Modal::Inspect,
+        Modal::Auto,
+        Modal::Menu(0),
+        Modal::Notice("test".into()),
+        Modal::Destination(Editor::new("folder-1234".into())),
+        Modal::Preview(Box::new(plan)),
+    ];
+    for modal in dialogs {
+        key(&mut app, KeyCode::Char('1'), KeyModifiers::ALT);
+        app.open_modal(modal);
+        key(&mut app, KeyCode::Tab, KeyModifiers::CONTROL);
+        assert_eq!(app.view, View::Find);
+        assert!(app.modal.is_none());
+        assert!(app.root.join("file-000.txt").exists());
+    }
+    app.open_modal(Modal::Destination(Editor::default()));
+    for digit in "1234".chars() {
+        plain(&mut app, KeyCode::Char(digit));
+    }
+    assert!(matches!(&app.modal, Some(Modal::Destination(input)) if input.text == "1234"));
+    key(&mut app, KeyCode::Char('3'), KeyModifiers::ALT);
+    assert_eq!(app.view, View::Clean);
+    assert!(app.modal.is_none());
+    settle(&mut app);
+}
+
+#[test]
+fn confirmation_has_two_stops_and_mouse_tabs_can_leave_it_safely() {
+    let (_temp, mut app) = fixture(2);
+    let file = focus(&mut app, "file-000.txt");
+    let plan = ops::plan(
+        app.index.as_ref().unwrap(),
+        &[file],
+        Action::Trash,
+        &app.state,
+        0,
+    )
+    .unwrap();
+    app.open_modal(Modal::Preview(Box::new(plan)));
+    let output = render(&mut app, 100, 30);
+    assert!(output.contains("Move 1 item to Trash?"));
+    assert!(!output.contains("TRASH >"));
+    assert_eq!(app.modal_focus, 0);
+    plain(&mut app, KeyCode::Tab);
+    assert_eq!(app.modal_focus, 1);
+    plain(&mut app, KeyCode::Tab);
+    assert_eq!(app.modal_focus, 0);
+    app.handle_event(Event::Paste("TRASH".into()));
+    assert_eq!(app.modal_focus, 0);
+    click(&mut app, Hit::View(View::Clean));
+    assert_eq!(app.view, View::Clean);
+    assert!(app.modal.is_none());
+    assert!(app.root.join("file-000.txt").exists());
+}
+
+#[test]
+fn large_listings_coalesce_and_cannot_overwrite_a_new_section() {
+    let (_temp, mut app) = fixture(4200);
+    assert!(app.listing && app.list_inflight);
+    key(&mut app, KeyCode::Char('3'), KeyModifiers::ALT);
+    assert!(app.pending_listing.is_some());
+    key(&mut app, KeyCode::Char('4'), KeyModifiers::ALT);
+    assert!(app.pending_listing.is_none());
+    settle(&mut app);
+    assert_eq!(app.view, View::Activity);
+    assert!(app.ids.is_empty());
+    key(&mut app, KeyCode::Char('1'), KeyModifiers::ALT);
+    settle(&mut app);
+    assert_eq!(app.ids.len(), 1000);
+    assert_eq!(app.folder_count, 4202);
+    let expected = app.ids.clone();
+    key(&mut app, KeyCode::Char('4'), KeyModifiers::ALT);
+    key(&mut app, KeyCode::Char('1'), KeyModifiers::ALT);
+    assert!(!app.listing && !app.list_inflight);
+    assert_eq!(app.ids, expected);
+}
+
+#[test]
+fn listing_cache_invalidates_removed_rows_and_their_usage_totals() {
+    let (_temp, mut app) = fixture(4);
+    let file = id(&app, "file-000.txt");
+    let previous_count = app.folder_count;
+    let previous_bytes = app.folder_bytes;
+    let size = app.index.as_ref().unwrap().entry(file).unwrap().allocated;
+    app.hidden.insert(file);
+    app.invalidate_rows();
+    app.refresh(None, 0);
+    assert!(!app.ids.contains(&file));
+    assert_eq!(app.folder_count, previous_count - 1);
+    assert_eq!(app.folder_bytes, previous_bytes - size);
+    app.hidden.remove(&file);
+    app.invalidate_rows();
+    app.refresh(None, 0);
+    assert!(app.ids.contains(&file));
+    assert_eq!(app.folder_bytes, previous_bytes);
+}
+
+#[test]
+fn map_tiles_select_and_open_the_same_items_as_the_list() {
+    let (_temp, mut app) = fixture(8);
+    let folder = id(&app, "folder");
+    let output = render(&mut app, 140, 40);
+    assert!(output.contains("Space map"));
+    click(&mut app, Hit::Tile(folder));
+    assert_eq!(app.focused(), Some(folder));
+    render(&mut app, 140, 40);
+    click(&mut app, Hit::Tile(folder));
+    assert_eq!(app.folder, folder);
+    plain(&mut app, KeyCode::Char('g'));
+    assert!(!app.show_map);
+    let output = render(&mut app, 140, 40);
+    assert!(!output.contains("Space map"));
+}
+
+#[test]
+fn leaving_an_operation_notice_does_not_claim_that_no_files_changed() {
+    let (_temp, mut app) = fixture(2);
+    app.status = "1 completed · 1 blocked".into();
+    app.open_modal(Modal::Notice("Some paths changed before an error".into()));
+    key(&mut app, KeyCode::PageDown, KeyModifiers::CONTROL);
+    assert!(!app.status.contains("no files changed"));
+    assert!(app.modal.is_none());
+    settle(&mut app);
+}
+
+#[test]
+#[ignore = "Read-only benchmark; set AXIT_BENCH_STATE to an existing metadata index"]
+fn benchmark_existing_index_navigation() {
+    let state =
+        PathBuf::from(std::env::var_os("AXIT_BENCH_STATE").expect("AXIT_BENCH_STATE is required"));
+    let index = Arc::new(Index::open(&crate::index_path(&state)).unwrap());
+    let entries = index.count;
+    let start = Instant::now();
+    let candidates = ops::cache_candidates(&index).len();
+    let cold_ms = start.elapsed().as_secs_f64() * 1000.;
+    let start = Instant::now();
+    for _ in 0..1000 {
+        std::hint::black_box(ops::cache_candidates(&index));
+    }
+    let warm_us = start.elapsed().as_secs_f64() * 1000.;
+    let temporary = tempfile::tempdir().unwrap();
+    let mut app = App::new(index.path(0).unwrap(), temporary.path().to_path_buf());
+    app.index = Some(index);
+    let start = Instant::now();
+    app.refresh(None, 0);
+    let dispatch_us = start.elapsed().as_secs_f64() * 1_000_000.;
+    let mut max_key_us = 0f64;
+    for digit in "341341341".chars() {
+        let start = Instant::now();
+        key(&mut app, KeyCode::Char(digit), KeyModifiers::ALT);
+        max_key_us = max_key_us.max(start.elapsed().as_secs_f64() * 1_000_000.);
+    }
+    for _ in 0..1000 {
+        app.messages();
+        if !app.listing && !app.list_inflight {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!app.listing && !app.list_inflight);
+    println!(
+        "{}",
+        serde_json::json!({"entries":entries,"cache_candidates":candidates,"candidate_cold_ms":cold_ms,"candidate_warm_us":warm_us,"cold_listing_dispatch_us":dispatch_us,"max_navigation_key_us":max_key_us})
+    );
+}
+
+#[test]
+fn rapid_query_changes_coalesce_to_the_latest_search() {
+    let (_temp, mut app) = fixture(100);
+    plain(&mut app, KeyCode::Char('/'));
+    for n in 0..20 {
+        app.query = Editor::new(format!("file-{n:03}.txt"));
+        app.query_changed();
+    }
+    assert!(app.search_inflight && app.search_pending);
+    settle(&mut app);
+    assert_eq!(app.ids, vec![id(&app, "file-019.txt")]);
+    assert_eq!(app.matched, 1);
+    assert!(!app.search_pending && !app.search_inflight);
 }

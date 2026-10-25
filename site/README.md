@@ -1,7 +1,8 @@
 # axit.sh
 
 Static WCKD site deployed with the standard Cloudflare Wrangler workflow.
-No dependency installation is needed for the build or checks; Node.js is sufficient.
+No dependency installation is needed. The build uses Node.js; checks also use
+Python 3 to verify the shared pixel axe.
 
 ```sh
 npm --prefix site run check
@@ -12,8 +13,10 @@ npm run deploy
 ```
 
 `check` builds from a clean checkout, then verifies local assets, anchors, Axit
-branding, the installer mirror and font licensing. `build.mjs` copies the exact
-root `install.sh` into the output; update that source rather than the generated copy.
+branding, the terminal capture, shared pixel axe, installer mirror and font licensing.
+Run `python3 scripts/render-logo.py` after changing `assets/axe.txt`; the terminal
+header uses that same mask. `build.mjs` copies the exact root `install.sh` into
+the output; update that source rather than the generated copy.
 The page links to GitHub release downloads; its install command uses `axit.sh/install.sh`.
 
 `public/fonts/jetbrains-mono-latin.woff2` is a tracked 31,340-byte binary asset,

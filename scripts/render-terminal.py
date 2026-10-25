@@ -24,9 +24,14 @@ for y in range(rows):
     x=0
     while x<columns:
         c=cells.get((x,y),{})
+        if c.get('text')=='▀':
+            color=c.get('fg','default')
+            if color!='default':parts.append(f'<rect x="{padding+x*cell_width}" y="{padding+y*cell_height}" width="{cell_width}" height="{cell_height/2}" fill="#{color}"/>')
+            x+=1
+            continue
         color,bold=c.get('fg','default'),c.get('bold',False)
         end=x+1
-        while end<columns and (cells.get((end,y),{}).get('fg','default'),cells.get((end,y),{}).get('bold',False))==(color,bold):end+=1
+        while end<columns and cells.get((end,y),{}).get('text')!='▀' and (cells.get((end,y),{}).get('fg','default'),cells.get((end,y),{}).get('bold',False))==(color,bold):end+=1
         text=''.join(cells.get((i,y),{}).get('text',' ') for i in range(x,end)).rstrip()
         if text.strip():
             fill='#e0e4f0' if color=='default' else '#'+color
