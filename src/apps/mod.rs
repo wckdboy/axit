@@ -70,7 +70,11 @@ pub struct Application {
 impl Application {
     pub fn key(&self) -> String {
         match &self.source {
-            Source::Brew { token } => format!("brew:{token}"),
+            Source::Brew { token } => self
+                .path
+                .as_deref()
+                .map(|p| format!("brew:{token}:{}", crate::text(p)))
+                .unwrap_or_else(|| format!("brew:{token}")),
             Source::Flatpak { reference, user } => format!(
                 "flatpak:{}:{reference}",
                 if *user { "user" } else { "system" }
@@ -112,12 +116,13 @@ pub fn resolve<'a>(catalog: &'a Catalog, query: &str) -> anyhow::Result<&'a Appl
         app.key() == query
             || app.id.eq_ignore_ascii_case(query)
             || app.name.eq_ignore_ascii_case(query)
+            || matches!(&app.source,Source::Brew{token} if query==format!("brew:{token}"))
     });
     let first = matches
         .next()
         .ok_or_else(|| anyhow::anyhow!("No application matches {query:?}"))?;
     anyhow::ensure!(
-        query.starts_with("brew:") || matches.next().is_none(),
+        matches.next().is_none(),
         "More than one app matches; use its full key from apps list"
     );
     Ok(first)

@@ -151,6 +151,7 @@ pub(super) fn enrich(context: &Context, catalog: &mut Catalog) {
                         .find(|old| old.id == app.id && old.source == Source::Desktop)
                     {
                         existing.source = app.source;
+                        existing.protected = false;
                     } else if catalog.apps.len() < 4096 {
                         catalog.apps.push(app);
                     }

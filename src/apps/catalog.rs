@@ -222,6 +222,18 @@ pub fn inventory(context: &Context) -> Catalog {
     let mut remaining = 16384usize;
     let mut seen = HashSet::new();
     for root in &context.app_roots {
+        if root
+            .extension()
+            .is_some_and(|x| x.eq_ignore_ascii_case("app"))
+        {
+            if context.allows(&root.join("Contents/Info.plist"))
+                && let Ok(app) = read_bundle(root)
+                && seen.insert(root.clone())
+            {
+                catalog.apps.push(app);
+            }
+            continue;
+        }
         let mut dirs = vec![(root.clone(), 0)];
         while let Some((dir, depth)) = dirs.pop() {
             if remaining == 0
@@ -249,7 +261,7 @@ pub fn inventory(context: &Context) -> Catalog {
             };
             for entry in entries.take(remaining).flatten() {
                 remaining = remaining.saturating_sub(1);
-                if catalog.apps.len() >= MAX_APPS {
+                if catalog.apps.len() >= MAX_APPS || started.elapsed() > Duration::from_secs(10) {
                     break;
                 }
                 let path = entry.path();
@@ -298,7 +310,7 @@ pub fn inventory(context: &Context) -> Catalog {
         };
         for entry in entries.take(remaining.min(MAX_APPS)).flatten() {
             remaining = remaining.saturating_sub(1);
-            if catalog.apps.len() >= MAX_APPS {
+            if catalog.apps.len() >= MAX_APPS || started.elapsed() > Duration::from_secs(10) {
                 break;
             }
             let path = entry.path();

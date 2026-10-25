@@ -199,6 +199,14 @@ fn scoped_inventory_and_files_reject_symlink_escapes() {
     let catalog = inventory(&scoped);
     assert_eq!(catalog.apps.len(), 1);
     assert_eq!(catalog.apps[0].id, "org.wckd.Alpha");
+    bundle(
+        &root.join("Alpha.app/Contents/Helper.app"),
+        "org.wckd.Helper",
+        false,
+    );
+    let single = inventory(&ctx.clone().constrained(&root.join("Alpha.app")).unwrap());
+    assert_eq!(single.apps.len(), 1);
+    assert_eq!(single.apps[0].id, "org.wckd.Alpha");
     let file = root.join("Alpha.app/Contents/Info.plist");
     fs::remove_file(&file).unwrap();
     symlink(outside.join("Contents/Info.plist"), &file).unwrap();
@@ -293,4 +301,68 @@ fn changed_primary_bundle_keeps_all_selected_personal_data() {
     assert!(result.completed.is_empty());
     assert_eq!(result.blocked.len(), 2);
     assert!(path.exists() && data.join("important.txt").exists());
+}
+
+#[test]
+fn system_flatpak_inventory_replaces_the_launcher_protection_with_native_ownership() {
+    use std::os::unix::fs::PermissionsExt;
+    let (temp, mut ctx) = fixture();
+    let exported = temp.path().join("system-applications");
+    fs::create_dir(&exported).unwrap();
+    fs::write(
+        exported.join("org.wckd.Flat.desktop"),
+        "[Desktop Entry]\nType=Application\nName=Flat\nX-Flatpak=org.wckd.Flat\n",
+    )
+    .unwrap();
+    ctx.desktop_roots = vec![exported];
+    assert!(inventory(&ctx).apps[0].protected);
+    let tool = temp.path().join("flatpak");
+    fs::write(
+        &tool,
+        "#!/bin/sh\nprintf 'app/org.wckd.Flat/x86_64/stable\\tFlat\\tsystem\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o700)).unwrap();
+    ctx.tools.flatpak = Some(tool);
+    let catalog = inventory(&ctx);
+    assert_eq!(catalog.apps.len(), 1);
+    assert!(matches!(
+        catalog.apps[0].source,
+        Source::Flatpak { user: false, .. }
+    ));
+    assert!(!catalog.apps[0].protected);
+}
+
+#[test]
+fn multi_bundle_casks_have_unique_selection_keys_and_ambiguous_tokens_require_a_choice() {
+    let (_temp, ctx) = fixture();
+    let a = ctx.app_roots[0].join("Alpha.app");
+    let b = ctx.app_roots[0].join("Beta.app");
+    bundle(&a, "org.wckd.Alpha", false);
+    bundle(&b, "org.wckd.Beta", false);
+    let mut a = read_bundle(&a).unwrap();
+    let mut b = read_bundle(&b).unwrap();
+    a.source = Source::Brew {
+        token: "suite".into(),
+    };
+    b.source = a.source.clone();
+    let catalog = Catalog {
+        apps: vec![a.clone(), b.clone()],
+        warnings: vec![],
+    };
+    assert_ne!(a.key(), b.key());
+    assert_eq!(resolve(&catalog, &b.key()).unwrap().id, b.id);
+    assert!(resolve(&catalog, "brew:suite").is_err());
+    assert_eq!(
+        resolve(
+            &Catalog {
+                apps: vec![b.clone()],
+                warnings: vec![]
+            },
+            "brew:suite"
+        )
+        .unwrap()
+        .id,
+        b.id
+    );
 }

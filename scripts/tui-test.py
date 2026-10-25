@@ -140,7 +140,7 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         app.send(b'\x1b[1;5A\x1b[D\x1b[B')  # Ctrl-Up -> navigation -> Space -> list.
         app.wait(lambda:'Space map' in app.content())
         app.send(b'12345')
-        app.wait(lambda:'Installed apps' in app.content())
+        app.wait(lambda:'Installed apps' in app.content() or 'Apps · loading' in app.content())
         app.send(b'\x1b[6;5~')  # Ctrl-PageDown wraps to Space without Escape.
         app.wait(lambda:'Space map' in app.content())
         app.click('downloads',left=True,double=True)

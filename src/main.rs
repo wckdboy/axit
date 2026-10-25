@@ -187,13 +187,23 @@ enum AppCommand {
     },
 }
 
-fn apps_cli(action: Option<AppCommand>, root: PathBuf, state: PathBuf) -> Result<()> {
+fn apps_cli(action: Option<AppCommand>, root: Option<PathBuf>, state: PathBuf) -> Result<()> {
     use axit::apps;
     let Some(action) = action else {
         ensure!(
             io::stdout().is_terminal() && io::stdin().is_terminal(),
             "Apps needs an interactive terminal; use apps list/inspect for scripts"
         );
+        let root = root
+            .or_else(|| {
+                current(&state)
+                    .ok()
+                    .and_then(|i| i.path(0).ok())
+                    .filter(|p| p.is_dir())
+            })
+            .unwrap_or(axit::home()?)
+            .canonicalize()
+            .context("Root folder is unavailable")?;
         return axit::tui::run_apps(root, state);
     };
     let context = apps::Context::system()?;
@@ -359,6 +369,12 @@ fn run() -> Result<()> {
     } else {
         axit::state_dir()?
     };
+    if matches!(cli.command, Some(Commands::Apps { .. })) {
+        let Some(Commands::Apps { action }) = cli.command else {
+            unreachable!()
+        };
+        return apps_cli(action, cli.root, state);
+    }
     let root = cli
         .root
         .or_else(|| current(&state).ok().and_then(|i| i.path(0).ok()))
@@ -366,7 +382,7 @@ fn run() -> Result<()> {
         .canonicalize()
         .context("Root folder is unavailable")?;
     match cli.command.unwrap_or(Commands::Tui) {
-        Commands::Apps { action } => apps_cli(action, root, state),
+        Commands::Apps { action } => apps_cli(action, Some(root), state),
         Commands::Tui => {
             ensure!(
                 io::stdout().is_terminal() && io::stdin().is_terminal(),
