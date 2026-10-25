@@ -791,3 +791,24 @@ fn apps_commands_do_not_require_the_previous_scan_root_to_still_exist() {
     assert!(!error.contains("Root folder is unavailable"));
     assert!(state.join("disk.idx").exists());
 }
+
+#[test]
+fn explicit_root_and_state_work_without_a_home_environment_variable() {
+    let (_temp, root, state) = fixture();
+    let result = std::process::Command::new(env!("CARGO_BIN_EXE_axit"))
+        .arg("--root")
+        .arg(&root)
+        .arg("--state-dir")
+        .arg(&state)
+        .arg("status")
+        .env_remove("HOME")
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(value["root"], wckd_axit::text(&root));
+}

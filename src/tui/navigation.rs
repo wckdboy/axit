@@ -656,6 +656,9 @@ impl App {
             }
         }
         if (ctrl || key.modifiers.contains(KeyModifiers::SUPER)) && key.code == KeyCode::Char('a') {
+            if self.view == View::Apps {
+                return false;
+            }
             self.selected = self.ids.iter().copied().collect();
             self.status = format!("{} listed items selected · Esc clears", self.selected.len());
             return false;

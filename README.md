@@ -20,30 +20,34 @@ editing it; site checks verify both generated SVGs match.
 ## Project status
 
 [Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
-tracks current work and the roadmap. [Axit 0.3.2](https://github.com/wckdboy/axit/releases/tag/v0.3.2)
-is released with Copper branding, a clickable storage map, explicit two-button
-confirmation, navigation focus and bounded background workers.
-Arrow-key navigation, the shared split-pixel mark and the 48×16 minimum layout
-are shipped. Up at the first row returns to the navigation; Ctrl-Up works anywhere.
-[axit.sh](https://axit.sh) is live on Cloudflare using the shared WCKD layout and
-the standard [Wrangler workflow](site/README.md).
+tracks current work and the roadmap. [Axit 0.4.0](https://github.com/wckdboy/axit/releases/tag/v0.4.0)
+is released with the Apps view, reviewed standalone removal, Homebrew/Flatpak
+installation, related-data review and scoped MCP/ACP app inspection. It includes
+the Copper palette, shared split-pixel mark, arrow navigation and storage map.
+[axit.sh](https://axit.sh) is deployed through the standard [Wrangler workflow](site/README.md).
 
-[Source CI](https://github.com/wckdboy/axit/actions/runs/40159774430) passed 67 Rust
-tests and 88 MCP/ACP checks on macOS, and 64 Rust tests and 89 protocol checks on
-Linux, plus installer/tamper, PTY and site checks. The
-[release workflow](https://github.com/wckdboy/axit/actions/runs/40160039361) built all
-four targets and tested the native Apple Silicon and Linux musl packages. The
-published Intel Mac package also passed protocol, installer and PTY checks through
-Rosetta. The README and Plane are updated alongside verified releases.
+The 0.4.1 candidate resolves explicit roots without requiring HOME to be set
+and prevents Ctrl-A from creating hidden file marks in the single-app selection view.
+An isolated CLI regression and a real Apps PTY check cover this case; patch
+publication is pending. Normal home-directory protections for mutations remain.
 
-The 0.3.2 CodeRabbit CLI review reports zero findings. Its GitHub suggestions
-about release attribution and preserving same-view scroll position are fixed.
+[Source CI](https://github.com/wckdboy/axit/actions/runs/40164317370) passed 83 Rust
+tests and 103 MCP/ACP checks on macOS, and 80 Rust tests and 104 protocol checks on
+Linux, plus installer/tamper, PTY/native-manager fixtures and site checks. The
+[0.4.0 release workflow](https://github.com/wckdboy/axit/actions/runs/40164785649)
+built and checked all four platform packages. The published Intel Mac package also
+passed protocol, installer and PTY checks through Rosetta. Production desktop,
+mobile and dark browser checks pass; the favicon and installer mirrors match.
 
-Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
-for more than 1,000 search/folder results (`AXIT-6`). Both remain planned work.
-The 0.4.0 application-manager candidate adds the Apps view, reviewed uninstall,
-related files, Homebrew/Flatpak installation and scoped MCP/ACP app inspection.
-Final review and publication are in progress (`AXIT-15`).
+The full application-manager CodeRabbit CLI review and final UI follow-up each
+reported zero findings after the earlier issues were fixed. Its late GitHub finding
+about eager HOME lookup is addressed by the 0.4.1 candidate. The CLI reached its
+included-review limit on that patch; GitHub review and CI continue independently.
+
+Next in Plane: incremental filesystem updates (`AXIT-5`), bounded pagination
+beyond 1,000 results (`AXIT-6`) and native Linux distro ownership/removal (`AXIT-18`).
+These remain planned work. Application management (`AXIT-15`) remains in progress
+until the final local upgrade and release verification are complete.
 
 ## Install
 

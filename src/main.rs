@@ -201,7 +201,7 @@ fn apps_cli(action: Option<AppCommand>, root: Option<PathBuf>, state: PathBuf) -
                     .and_then(|i| i.path(0).ok())
                     .filter(|p| p.is_dir())
             })
-            .unwrap_or(axit::home()?)
+            .map_or_else(axit::home, Ok)?
             .canonicalize()
             .context("Root folder is unavailable")?;
         return axit::tui::run_apps(root, state);
@@ -378,7 +378,7 @@ fn run() -> Result<()> {
     let root = cli
         .root
         .or_else(|| current(&state).ok().and_then(|i| i.path(0).ok()))
-        .unwrap_or(axit::home()?)
+        .map_or_else(axit::home, Ok)?
         .canonicalize()
         .context("Root folder is unavailable")?;
     match cli.command.unwrap_or(Commands::Tui) {

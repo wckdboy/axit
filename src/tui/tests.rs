@@ -946,6 +946,11 @@ fn apps_view_filters_reviews_data_and_keeps_navigation_and_confirmation_accessib
     assert_eq!(app.apps.filter.text, "Alpha");
     plain(&mut app, KeyCode::Enter);
     assert!(app.app_target().is_some());
+    key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+    assert!(
+        app.selected.is_empty(),
+        "Apps has a single focused app, not file-index marks"
+    );
     let screen = render(&mut app, 48, 16);
     assert!(screen.contains("5 Apps") && screen.contains("Alpha"));
     click(&mut app, Hit::Command(Command::Uninstall));
