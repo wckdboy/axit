@@ -682,6 +682,10 @@ fn plan_with_budget(
             }),
         }
     }
+    // Watchers can retry blocked candidates indefinitely without accumulating plans.
+    if budget.is_some() && plan.entries.is_empty() {
+        return Ok(plan);
+    }
     private_dir(&state.join("plans"))?;
     let path = state.join("plans").join(format!("{}.json", plan.id));
     let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
@@ -1179,6 +1183,27 @@ pub fn auto_policy(state: &Path) -> Result<AutoPolicy> {
 }
 
 pub fn save_auto(state: &Path, policy: &AutoPolicy) -> Result<()> {
+    validate_auto_limits(policy)?;
+    for root in &policy.roots {
+        auto_root(root)?;
+    }
+    persist_auto(state, policy)
+}
+
+fn auto_root(root: &str) -> Result<PathBuf> {
+    let root = Path::new(root).canonicalize()?;
+    let normalized = root
+        .strip_prefix("/System/Volumes/Data")
+        .map(|p| Path::new("/").join(p))
+        .unwrap_or(root.clone());
+    ensure!(
+        normalized != crate::home()?.canonicalize()? && normalized.components().count() > 3,
+        "Choose a project/cache folder, not an entire home or disk"
+    );
+    Ok(root)
+}
+
+fn validate_auto_limits(policy: &AutoPolicy) -> Result<()> {
     ensure!(
         policy.minimum_age_days >= 1
             && policy.max_bytes <= 20 * 1024 * 1024 * 1024
@@ -1189,17 +1214,11 @@ pub fn save_auto(state: &Path, policy: &AutoPolicy) -> Result<()> {
         !policy.enabled || !policy.roots.is_empty(),
         "Choose explicit project/cache roots before enabling automatic cleanup"
     );
-    for root in &policy.roots {
-        let root = Path::new(root).canonicalize()?;
-        let normalized = root
-            .strip_prefix("/System/Volumes/Data")
-            .map(|p| Path::new("/").join(p))
-            .unwrap_or(root.clone());
-        ensure!(
-            normalized != crate::home()?.canonicalize()? && normalized.components().count() > 3,
-            "Choose a project/cache folder, not an entire home or disk"
-        );
-    }
+    Ok(())
+}
+
+// Persist runtime timestamps without dropping configured roots that went offline.
+fn persist_auto(state: &Path, policy: &AutoPolicy) -> Result<()> {
     let mut temporary = tempfile::NamedTempFile::new_in(state)?;
     temporary.write_all(&serde_json::to_vec_pretty(policy)?)?;
     temporary.as_file().sync_all()?;
@@ -1220,6 +1239,7 @@ pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
         Err(error) => return Err(error.into()),
     }
     let mut policy = auto_policy(state)?;
+    validate_auto_limits(&policy)?;
     let now = crate::unix_now();
     if !policy.enabled
         || now.saturating_sub(policy.last_run) < policy.cooldown_secs
@@ -1234,8 +1254,14 @@ pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
     let roots: Vec<_> = policy
         .roots
         .iter()
-        .map(|p| crate::scoped_alias(&Path::new(p).canonicalize()?, &scope))
-        .collect::<Result<_>>()?;
+        .filter_map(|p| {
+            let path = auto_root(p).ok()?;
+            crate::scoped_alias(&path, &scope).ok()
+        })
+        .collect();
+    if roots.is_empty() {
+        return Ok(None);
+    }
     let mut candidates: Vec<_> = cache_candidates(index)
         .iter()
         .copied()
@@ -1263,7 +1289,7 @@ pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
         }
     }
     policy.last_checked = now;
-    save_auto(state, &policy)?;
+    persist_auto(state, &policy)?;
     if ids.is_empty() {
         return Ok(None);
     }
@@ -1295,11 +1321,11 @@ pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
     // Reserve the daily allowance durably before any mutation; errors retain it.
     let previous_run = policy.last_run;
     policy.last_run = now;
-    save_auto(state, &policy)?;
+    persist_auto(state, &policy)?;
     let result = apply(state, &plan, "CLEAN")?;
     if result.completed.is_empty() && !result.needs_reconcile {
         policy.last_run = previous_run;
-        save_auto(state, &policy)?;
+        persist_auto(state, &policy)?;
     }
     Ok(Some(result))
 }

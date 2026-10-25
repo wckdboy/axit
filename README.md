@@ -35,7 +35,7 @@ Rosetta. The README and Plane are updated alongside verified releases.
 
 The 0.3.0 release candidate adds a clickable storage map, explicit two-button
 confirmation, navigation focus and bounded background workers. Native validation
-currently passes 63 Rust tests, Clippy and the keyboard/mouse PTY suite. Packaged
+currently passes 65 Rust tests, Clippy and the keyboard/mouse PTY suite. Packaged
 cross-platform checks and publication are still pending.
 
 Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
@@ -62,7 +62,7 @@ From a source checkout with Rust 1.88 or newer:
 sh install.sh --local
 ```
 
-Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.3.0` to pin
+Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.2.0` to pin
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 Renamed from SCRY: existing private indexes, cleanup preferences and the undo journal
@@ -210,6 +210,8 @@ An empty or fully blocked check can retry after five minutes without consuming t
 daily allowance. A batch accepts at most 16 caches within the verified byte budget;
 oversized entries are skipped so smaller eligible caches can fit. Candidate metadata
 is reused, but every destructive claim gets fresh process and identity checks.
+Unavailable and out-of-scope roots are skipped without losing saved preferences.
+Blocked automatic previews are not persisted, so retries do not accumulate empty plans.
 
 ## MCP
 

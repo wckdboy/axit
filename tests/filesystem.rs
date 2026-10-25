@@ -505,6 +505,69 @@ fn concurrent_automatic_checks_share_one_policy_reservation() {
     assert!(ops::auto_policy(&state).unwrap().last_checked > 0);
 }
 
+#[test]
+fn automatic_cleanup_skips_missing_and_out_of_scope_roots_without_losing_preferences() {
+    let (_t, root, state) = fixture();
+    let missing = state.join("offline-project");
+    let outside = state.join("other-project");
+    fs::create_dir_all(&missing).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    let index = scan(&root, &state);
+    let policy = ops::AutoPolicy {
+        enabled: true,
+        roots: vec![
+            missing.to_string_lossy().into(),
+            outside.to_string_lossy().into(),
+        ],
+        below_free_bytes: u64::MAX,
+        ..Default::default()
+    };
+    ops::save_auto(&state, &policy).unwrap();
+    fs::remove_dir(&missing).unwrap();
+    assert!(ops::auto_run(&state, &index).unwrap().is_none());
+    let mut policy = ops::auto_policy(&state).unwrap();
+    policy.roots.push(root.to_string_lossy().into());
+    // Simulate the stored configuration before one root became unavailable.
+    fs::write(
+        state.join("auto.json"),
+        serde_json::to_vec(&policy).unwrap(),
+    )
+    .unwrap();
+    assert!(ops::auto_run(&state, &index).unwrap().is_none());
+    let saved = ops::auto_policy(&state).unwrap();
+    assert_eq!(saved.roots, policy.roots);
+    assert!(saved.last_checked > 0);
+    assert_eq!(saved.last_run, 0);
+}
+
+#[test]
+fn repeated_blocked_automatic_checks_do_not_accumulate_empty_plans() {
+    let (_t, root, state) = fixture();
+    let cache = root.join("target/debug");
+    fs::create_dir_all(&cache).unwrap();
+    fs::write(cache.join("cache.bin"), b"not a certified project").unwrap();
+    let old = fs::FileTimes::new()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 86400));
+    fs::File::open(&cache).unwrap().set_times(old).unwrap();
+    let index = scan(&root, &state);
+    let mut policy = ops::AutoPolicy {
+        enabled: true,
+        roots: vec![root.to_string_lossy().into()],
+        below_free_bytes: u64::MAX,
+        ..Default::default()
+    };
+    for _ in 0..3 {
+        policy.last_checked = 0;
+        ops::save_auto(&state, &policy).unwrap();
+        let result = ops::auto_run(&state, &index).unwrap().unwrap();
+        assert!(result.completed.is_empty() && !result.blocked.is_empty());
+        assert!(!state.join("plans").exists());
+        policy = ops::auto_policy(&state).unwrap();
+        assert_eq!(policy.last_run, 0);
+    }
+    assert!(cache.join("cache.bin").exists());
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn automatic_cleanup_accepts_logical_roots_for_a_data_volume_index() {
