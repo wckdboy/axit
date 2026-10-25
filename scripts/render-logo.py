@@ -14,8 +14,8 @@ rects = []
 for y, row in enumerate(rows):
     for x, cell in enumerate(row):
         if cell != ".":
-            rects.append(f'<rect x="{2+x*2}" y="{2+y*2}" width="2" height="2" fill="{accent}"/>')
-svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" shape-rendering="crispEdges" role="img"><title>Axit split pixel mark</title>' + ''.join(rects) + '</svg>\n'
+            rects.append(f'<rect x="{x}" y="{y}" width="1" height="1" fill="{accent}"/>')
+svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges" role="img"><title>Axit split pixel mark</title>' + ''.join(rects) + '</svg>\n'
 paths = [root / "assets/mark.svg", root / "site/public/favicon.svg"]
 if sys.argv[1:] == ["--check"]:
     for path in paths:

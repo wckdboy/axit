@@ -877,6 +877,11 @@ fn arrow_keys_move_between_content_and_navigation_without_clearing_input_or_mark
     plain(&mut app, KeyCode::Up);
     assert_eq!(app.focus, Focus::Nav);
     key(&mut app, KeyCode::Char('4'), KeyModifiers::ALT);
+    app.activity_scroll = 7;
+    key(&mut app, KeyCode::Up, KeyModifiers::CONTROL);
+    assert_eq!(app.activity_scroll, 7);
+    plain(&mut app, KeyCode::Down);
+    assert_eq!(app.activity_scroll, 7);
     app.activity_scroll = 1;
     plain(&mut app, KeyCode::Up);
     assert_eq!(app.activity_scroll, 0);

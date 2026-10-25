@@ -94,6 +94,7 @@ impl App {
         if self.view != view {
             self.remember();
             self.view = view;
+            self.activity_scroll = 0;
             if !self.applying && !self.auto_busy {
                 self.status = "Ready".into();
             }
@@ -104,7 +105,6 @@ impl App {
         } else {
             Focus::List
         };
-        self.activity_scroll = 0;
     }
 
     fn folder(&mut self, id: u32, focused: Option<u32>) {

@@ -20,22 +20,24 @@ editing it; site checks verify both generated SVGs match.
 ## Project status
 
 [Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
-tracks current work and the roadmap. [Axit 0.3.0](https://github.com/wckdboy/axit/releases/tag/v0.3.0)
-is released with a clickable storage map, explicit two-button confirmation,
-navigation focus, bounded background workers and the shared pixel mark.
+tracks current work and the roadmap. [Axit 0.3.1](https://github.com/wckdboy/axit/releases/tag/v0.3.1)
+is released with Copper branding, a clickable storage map, explicit two-button
+confirmation, navigation focus and bounded background workers.
+The 0.3.2 candidate adds arrow-key navigation, a split-pixel mark and a 48×16
+minimum layout with a visible Find result. Publication is pending.
 [axit.sh](https://axit.sh) is live on Cloudflare using the shared WCKD layout and
 the standard [Wrangler workflow](site/README.md).
 
-[Source CI](https://github.com/wckdboy/axit/actions/runs/40154205170) passed 65 Rust
+[Source CI](https://github.com/wckdboy/axit/actions/runs/40155268098) passed 65 Rust
 tests and 88 MCP/ACP checks on macOS, and 62 Rust tests and 89 protocol checks on
 Linux, plus installer/tamper, PTY and site checks. The
-[release workflow](https://github.com/wckdboy/axit/actions/runs/40154268112) built all
+[release workflow](https://github.com/wckdboy/axit/actions/runs/40155596892) built all
 four targets and tested the native Apple Silicon and Linux musl packages. The
 published Intel Mac package also passed protocol, installer and PTY checks through
 Rosetta. The README and Plane are updated alongside verified releases.
 
-CodeRabbit's major-issue gate passes; its follow-up review reports zero findings.
-The later shortcut guidance and singular-cache wording suggestions are also fixed.
+The 0.3.2 CodeRabbit CLI review reports zero findings. Its GitHub suggestions
+about release attribution and preserving same-view scroll position are fixed.
 
 Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
 for more than 1,000 search/folder results (`AXIT-6`). Both remain planned work.
@@ -63,7 +65,7 @@ From a source checkout with Rust 1.88 or newer:
 sh install.sh --local
 ```
 
-Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.3.0` to pin
+Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.3.1` to pin
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 Renamed from SCRY: existing private indexes, cleanup preferences and the undo journal
