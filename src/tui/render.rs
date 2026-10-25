@@ -168,7 +168,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Length(1),
             Constraint::Length(if app.view == View::Find { 3 } else { 2 }),
             Constraint::Min(3),
@@ -179,9 +179,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .split(area);
     logo::draw(frame, layout[0]);
     let text_area = Rect::new(
-        layout[0].x + 8,
+        layout[0].x + 10,
         layout[0].y,
-        layout[0].width.saturating_sub(8),
+        layout[0].width.saturating_sub(10),
         1,
     );
     let mut brand = vec![
@@ -214,7 +214,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             } else {
                 INFO
             })),
-            Rect::new(text_area.x, text_area.y + 1, text_area.width, 1),
+            Rect::new(text_area.x, text_area.y + 2, text_area.width, 1),
         );
         let width = 20.min(text_area.width.saturating_sub(16));
         let used = (u128::from(width) * u128::from(volume.total.saturating_sub(available))
@@ -226,7 +226,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         ];
         frame.render_widget(
             Paragraph::new(Line::from(spans)),
-            Rect::new(text_area.x, text_area.y + 2, text_area.width, 1),
+            Rect::new(text_area.x, text_area.y + 3, text_area.width, 1),
         );
     }
 
@@ -793,7 +793,7 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
     // Only explicit section navigation remains available behind a dialog.
     app.ui.hits.retain(|(_, hit)| matches!(hit, Hit::View(_)));
     let container = if area.height >= 20 {
-        Rect::new(area.x, area.y + 5, area.width, area.height - 5)
+        Rect::new(area.x, area.y + 6, area.width, area.height - 6)
     } else {
         area
     };

@@ -11,10 +11,7 @@ pub(super) const MASK: &str = include_str!("../../assets/axe.txt");
 
 fn color(pixel: u8) -> Color {
     match pixel {
-        b'E' => FG,
-        b'S' => INFO,
-        b'C' => DIM,
-        b'B' | b'H' => ACCENT,
+        b'A' => ACCENT,
         _ => BG,
     }
 }
@@ -22,8 +19,8 @@ fn color(pixel: u8) -> Color {
 /// Half blocks keep the pixels square in a terminal cell with a 1:2 aspect ratio.
 pub(super) fn draw(frame: &mut Frame, area: Rect) {
     let rows: Vec<_> = MASK.lines().map(str::as_bytes).collect();
-    for y in 0..3 {
-        let line: Vec<_> = (0..6)
+    for y in 0..4 {
+        let line: Vec<_> = (0..8)
             .map(|x| {
                 Span::styled(
                     "▀",
@@ -35,7 +32,7 @@ pub(super) fn draw(frame: &mut Frame, area: Rect) {
             .collect();
         frame.render_widget(
             Paragraph::new(Line::from(line)),
-            Rect::new(area.x, area.y + y as u16, 6.min(area.width), 1),
+            Rect::new(area.x, area.y + y as u16, 8.min(area.width), 1),
         );
     }
 }
