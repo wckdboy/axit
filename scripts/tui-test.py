@@ -233,9 +233,11 @@ with tempfile.TemporaryDirectory(prefix='axit-pages-ui-', dir='/tmp') as tempora
         app.wait(lambda:'1001–2000 of 10057' in app.content())
         app.send(b' ')
         app.send(b'\x1b[3~')
-        app.wait(lambda:'Review plan' in app.content())
-        check_content = app.content()
-        assert 'file-00000.txt' in check_content and 'file-01000.txt' in check_content, check_content
+        # A terminal frame can span several reads. Wait for the reviewed IDs,
+        # including the marked file that is no longer in the visible window.
+        app.wait(lambda:'Review plan' in app.content()
+                 and 'file-00000.txt' in app.content()
+                 and 'file-01000.txt' in app.content())
         app.send(b'\x1b')
         app.send(b'\x1b[F')
         app.wait(lambda:'9058–10057 of 10057' in app.content() and 'file-10056.txt' in app.content())
