@@ -46,9 +46,28 @@ The PTY harness waits for the complete reviewed file identities before checking 
 terminal frame; its [CI run](https://github.com/wckdboy/axit/actions/runs/40190209154)
 checks the same released application.
 
-Pagination (`AXIT-6`) is shipped. Next: incremental filesystem updates (`AXIT-5`)
-with bounded resource use and missed-event recovery. Native Linux distro ownership
-and removal (`AXIT-18`) remains planned work.
+Pagination (`AXIT-6`) is shipped. Incremental filesystem updates (`AXIT-5`) are
+in progress on `feat/incremental-refresh`. The first engine reconciles selected
+paths into a bounded immutable sidecar, without rewriting the base index. It
+preserves old readers, stable live-file IDs and linked-file accounting, rejects
+partial/invalid updates, and compacts the sidecar on a successful full scan.
+This is an unreleased library foundation; CLI/TUI/MCP/ACP refresh controls and
+native FSEvents/inotify watching with missed-event recovery remain to be built.
+No background watcher or daemon starts automatically. Native Linux distro
+ownership and removal (`AXIT-18`) remains planned work.
+
+Refresh regression fixtures cover create/write/delete and type changes, subtree
+moves, hardlinks, raw filenames, unreadable contents/directories, state exclusion,
+lock contention, cancellation, corrupt/stale sidecars, full-scan recovery, cursor
+invalidation and old readers. A 10,000-file temporary fixture verifies that a
+one-file refresh visits one filesystem object and leaves the base bytes unchanged.
+The engine caps each update at 64 paths, 131,072 visited/changed records and a
+16 MiB sidecar. Budget exhaustion preserves the prior generation and asks for a
+narrower refresh or a full scan. Existing full-scan permission gaps stay visible;
+a partial refresh does not imply whole-index freshness.
+The first local macOS pass reports 112 passing Rust tests (18 refresh tests and one TUI recovery test),
+one existing ignored test, and clean formatting and all-target Clippy checks.
+Linux CI and CodeRabbit review are required before this foundation is merged.
 
 ## Install
 

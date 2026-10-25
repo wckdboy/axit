@@ -165,7 +165,7 @@ impl Shared {
     fn status(&self) -> Value {
         let index = self.index().ok();
         json!({"name":"AXIT","version":crate::VERSION,"root":crate::text(&self.root),"scanning":self.scanning.load(Ordering::Acquire),
-            "progress":self.progress.lock().ok().map(|p|p.clone()),"entries":index.as_ref().map(|i|i.count),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),
+            "progress":self.progress.lock().ok().map(|p|p.clone()),"entries":index.as_ref().map(|i|i.live_count()),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"last_refresh_unix":index.as_ref().and_then(|i|i.last_refresh()),
             "restricted_or_missing":index.as_ref().map(|i|i.errors),"volume":crate::system::volume(&self.root).ok(),"mutations_enabled":self.writes,
             "coverage_note":"Permission failures are reported. Folder totals overlap; APFS shared blocks affect reclaimable space."})
     }

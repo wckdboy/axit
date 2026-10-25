@@ -90,7 +90,7 @@ impl App {
             && self.index.is_none()
             && self.scan.is_none()
         {
-            self.scan();
+            self.scan_if_missing();
         }
         self.ui.hits.clear();
     }
@@ -122,7 +122,7 @@ impl App {
                 && self.index.is_none()
                 && self.scan.is_none()
             {
-                self.scan();
+                self.scan_if_missing();
             }
         }
         self.focus = if matches!(view, View::Find | View::Apps) {

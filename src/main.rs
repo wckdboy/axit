@@ -208,9 +208,8 @@ fn apps_cli(action: Option<AppCommand>, root: Option<PathBuf>, state: PathBuf) -
         );
         let root = root
             .or_else(|| {
-                current(&state)
+                Index::base_root(&axit::index_path(&state))
                     .ok()
-                    .and_then(|i| i.path(0).ok())
                     .filter(|p| p.is_dir())
             })
             .map_or_else(axit::home, Ok)?
@@ -399,7 +398,7 @@ fn run() -> Result<()> {
     }
     let root = cli
         .root
-        .or_else(|| current(&state).ok().and_then(|i| i.path(0).ok()))
+        .or_else(|| Index::base_root(&axit::index_path(&state)).ok())
         .map_or_else(axit::home, Ok)?
         .canonicalize()
         .context("Root folder is unavailable")?;
@@ -419,10 +418,11 @@ fn run() -> Result<()> {
             signal_hook::flag::register(signal_hook::consts::SIGTERM, cancel.clone())?;
             let started = Instant::now();
             eprintln!("AXIT · scanning {} · metadata only", axit::text(&root));
-            let path = axit::index::scan(&root, &state, progress, cancel)?;
+            let path = axit::index::scan(&root, &state, progress.clone(), cancel)?;
             let index = Index::open(&path)?;
+            let scan_message = progress.lock().ok().map(|p| p.message.clone());
             output(
-                serde_json::json!({"root":axit::text(&root),"entries":index.count,"allocated_bytes":index.entry(0).map(|e|e.allocated),"restricted_or_missing":index.errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"index_bytes":index.disk_bytes(),"index":axit::text(&path),"coverage":"Other mounts and symlinks are not followed. Permission failures appear in latest-scan.json."}),
+                serde_json::json!({"root":axit::text(&root),"entries":index.live_count(),"allocated_bytes":index.entry(0).map(|e|e.allocated),"restricted_or_missing":index.errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"index_bytes":index.disk_bytes(),"index":axit::text(&path),"scan_message":scan_message,"coverage":"Other mounts and symlinks are not followed. Permission failures appear in latest-scan.json."}),
             )
         }
         Commands::Search {
@@ -534,7 +534,7 @@ fn run() -> Result<()> {
         Commands::Status => {
             let index = current(&state).ok();
             output(
-                serde_json::json!({"name":"AXIT / WCKD.ai","version":axit::VERSION,"root":axit::text(&root),"volume":axit::system::volume(&root)?,"entries":index.as_ref().map(|i|i.count),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"restricted_or_missing":index.as_ref().map(|i|i.errors),"automatic_cleanup":ops::auto_policy(&state)?}),
+                serde_json::json!({"name":"AXIT / WCKD.ai","version":axit::VERSION,"root":axit::text(&root),"volume":axit::system::volume(&root)?,"entries":index.as_ref().map(|i|i.live_count()),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"last_refresh_unix":index.as_ref().and_then(|i|i.last_refresh()),"restricted_or_missing":index.as_ref().map(|i|i.errors),"automatic_cleanup":ops::auto_policy(&state)?}),
             )
         }
         Commands::Doctor => {

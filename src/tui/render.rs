@@ -242,7 +242,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         && area.width >= 90
     {
         brand.push(Span::styled(
-            format!("   {} indexed", index.count),
+            format!("   {} indexed", index.live_count()),
             Style::default().fg(DIM),
         ));
     }

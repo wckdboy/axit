@@ -1274,3 +1274,27 @@ fn dragging_past_a_window_boundary_preserves_marks_and_drops_old_row_anchors() {
     assert!(app.drag_anchor.is_none() && app.anchor.is_none());
     assert!(app.selected.contains(&marked));
 }
+
+#[test]
+fn corrupt_incremental_index_requires_explicit_repair_and_preserves_scan_scope() {
+    let (_temp, app) = fixture(3);
+    let (root, state) = (app.root.clone(), app.state.clone());
+    drop(app);
+    let delta = crate::index_path(&state).with_extension("delta");
+    fs::write(&delta, b"broken").unwrap();
+    let mut app = App::new(root.clone(), state.clone());
+    assert!(app.index.is_none());
+    assert!(app.status.contains("Index unavailable"));
+    app.scan_if_missing();
+    plain(&mut app, KeyCode::Char('2'));
+    plain(&mut app, KeyCode::Char('3'));
+    app.restore_location(app.location());
+    assert!(app.scan.is_none());
+    assert_eq!(fs::read(&delta).unwrap(), b"broken");
+    plain(&mut app, KeyCode::Char('1'));
+    plain(&mut app, KeyCode::Char('r'));
+    settle(&mut app);
+    assert_eq!(app.index.as_ref().unwrap().path(0).unwrap(), root);
+    assert!(app.index_error.is_none());
+    assert!(!delta.exists());
+}

@@ -229,6 +229,7 @@ pub struct App {
     tx: Sender<Message>,
     rx: Receiver<Message>,
     scan: Option<thread::JoinHandle<()>>,
+    index_error: Option<String>,
     busy: bool,
     applying: bool,
     quit_after_operation: bool,
@@ -263,7 +264,14 @@ impl App {
         context: Option<crate::apps::Context>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
-        let index = Index::open(&crate::index_path(&state))
+        let stored = crate::index_path(&state);
+        let opened = Index::open(&stored);
+        let index_error = opened
+            .as_ref()
+            .err()
+            .filter(|_| stored.symlink_metadata().is_ok())
+            .map(|error| format!("Index unavailable · r Scan to repair · {error:#}"));
+        let index = opened
             .ok()
             .filter(|i| i.path(0).is_ok_and(|p| p == root))
             .map(Arc::new);
@@ -315,6 +323,7 @@ impl App {
             tx,
             rx,
             scan: None,
+            index_error,
             busy: false,
             applying: false,
             quit_after_operation: false,
@@ -334,6 +343,9 @@ impl App {
         app.load_overlay();
         app.load_coverage();
         app.refresh(None, 0);
+        if let Some(error) = &app.index_error {
+            app.status = error.clone();
+        }
         app
     }
 
@@ -519,6 +531,16 @@ impl App {
         self.search();
     }
 
+    fn scan_if_missing(&mut self) {
+        if self.index.is_none() && self.scan.is_none() {
+            if let Some(error) = &self.index_error {
+                self.status = error.clone();
+            } else {
+                self.scan();
+            }
+        }
+    }
+
     fn scan(&mut self) {
         if self.scan.is_some() {
             self.status = "A scan is already running".into();
@@ -623,6 +645,7 @@ impl App {
                         Ok(index) => {
                             let location = self.location();
                             self.index = Some(index);
+                            self.index_error = None;
                             self.hidden.clear();
                             self.invalidate_rows();
                             self.needs_rescan = false;
@@ -641,8 +664,15 @@ impl App {
                             let index = self.index.as_ref().unwrap();
                             self.status = format!(
                                 "Indexed {} entries · {} restricted/missing",
-                                index.count, index.errors
+                                index.live_count(),
+                                index.errors
                             );
+                            if let Ok(progress) = self.progress.lock()
+                                && progress.message.starts_with("Scan complete · ")
+                            {
+                                self.status.push_str(" · ");
+                                self.status.push_str(&progress.message);
+                            }
                             self.record(self.status.clone());
                         }
                         Err(error) => {
@@ -911,7 +941,7 @@ fn run_in(
     }
     execute!(io::stdout(), EnableMouseCapture, EnableBracketedPaste)?;
     if app.index.is_none() && view != View::Apps {
-        app.scan();
+        app.scan_if_missing();
     }
     let result = (|| -> Result<()> {
         let mut dirty = true;
