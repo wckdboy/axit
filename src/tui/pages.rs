@@ -90,6 +90,8 @@ impl App {
         self.last_click = None;
         self.pressed = None;
         self.anchor = None;
+        self.drag_anchor = None;
+        self.drag_scrollbar = false;
         if self.view == View::Find {
             self.search();
         } else {

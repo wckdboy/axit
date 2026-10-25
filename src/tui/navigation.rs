@@ -446,6 +446,12 @@ impl App {
         self.invalidate_search();
         self.pages = Default::default();
         self.table = TableState::default();
+        self.anchor = None;
+        self.drag_anchor = None;
+        self.drag_scrollbar = false;
+        self.last_click = None;
+        self.pressed = None;
+        self.ui.hits.clear();
         self.sort = sort;
         if self.view == View::Find {
             self.restore_focus = focused;
@@ -1188,6 +1194,11 @@ impl App {
                     } else {
                         None
                     };
+                    // wheel() can publish a different result window immediately.
+                    // Never apply the previous window's row anchor to its IDs.
+                    if self.drag_anchor != Some(anchor) {
+                        return false;
+                    }
                     if let Some(row) = row {
                         self.range(anchor, row);
                         self.select_row(row);

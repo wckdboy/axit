@@ -1225,3 +1225,52 @@ fn operation_overlay_changes_invalidate_history_tokens_and_restore_the_saved_fil
     assert!(app.search_error.is_none());
     assert!(!app.ids.contains(&removed));
 }
+
+#[test]
+fn dragging_past_a_window_boundary_preserves_marks_and_drops_old_row_anchors() {
+    let (_temp, mut app) = fixture(1057);
+    settle(&mut app);
+    app.select_row(999);
+    render(&mut app, 100, 30);
+    let marked = app.ids[999];
+    let p = point(&app, Hit::Row(999));
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        p,
+        KeyModifiers::CONTROL,
+    );
+    assert_eq!(app.drag_anchor, Some(999));
+    let outside = (p.0, app.ui.list.bottom());
+    mouse(
+        &mut app,
+        MouseEventKind::Drag(MouseButton::Left),
+        outside,
+        KeyModifiers::NONE,
+    );
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 1000);
+    assert_eq!(app.ids.len(), 59);
+    assert!(app.drag_anchor.is_none() && app.anchor.is_none());
+    assert_eq!(app.selected, HashSet::from([marked]));
+    render(&mut app, 100, 30);
+    let p = point(&app, Hit::Row(1));
+    mouse(
+        &mut app,
+        MouseEventKind::Drag(MouseButton::Left),
+        p,
+        KeyModifiers::NONE,
+    );
+    assert_eq!(app.selected, HashSet::from([marked]));
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        p,
+        KeyModifiers::CONTROL,
+    );
+    assert_eq!(app.drag_anchor, Some(1));
+    plain(&mut app, KeyCode::Char('s'));
+    settle(&mut app);
+    assert!(app.drag_anchor.is_none() && app.anchor.is_none());
+    assert!(app.selected.contains(&marked));
+}
