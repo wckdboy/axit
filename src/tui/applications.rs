@@ -179,6 +179,13 @@ pub(super) fn modal(frame: &mut Frame, app: &mut App, area: Rect) -> bool {
         );
         let mut lines = vec![];
         for (i, file) in review.rows.iter().enumerate() {
+            let path = app
+                .apps
+                .context
+                .as_ref()
+                .and_then(|ctx| file.path.strip_prefix(&ctx.home).ok())
+                .map(|p| format!("~/{}", crate::text(p)))
+                .unwrap_or_else(|| crate::text(&file.path));
             let color = if !file.selectable {
                 BORDER
             } else if app.modal_focus == 2 && i == review.cursor {
@@ -197,7 +204,7 @@ pub(super) fn modal(frame: &mut Frame, app: &mut App, area: Rect) -> bool {
                 format!(
                     "{} {checkbox} {}",
                     if i == review.cursor { "›" } else { " " },
-                    crate::text(&file.path)
+                    path
                 ),
                 Style::default().fg(color),
             ));

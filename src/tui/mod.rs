@@ -564,6 +564,7 @@ impl App {
                         self.busy = false;
                         self.open_modal(Modal::AppFiles(review));
                         self.modal_focus = 2;
+                        self.status = "Choose files · Enter reviews · Esc cancels".into();
                     }
                 }
                 Message::Listing(ticket, data, focused, offset) => {

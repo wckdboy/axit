@@ -855,6 +855,12 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
     } else if let Some(Modal::Preview(plan)) = &app.modal {
         let rows = (plan.entries.len() + plan.blocked.len()).min(7) as u16;
         centered(container, 78, (10 + rows * 2).clamp(12, 24))
+    } else if let Some(Modal::AppFiles(review)) = &app.modal {
+        centered(
+            container,
+            92,
+            (10 + (review.rows.len().min(8) as u16) * 2).clamp(12, 26),
+        )
     } else if matches!(
         app.modal,
         Some(Modal::Destination(_) | Modal::Auto | Modal::AppInstall(_) | Modal::Managed(_))
