@@ -204,5 +204,104 @@ with tempfile.TemporaryDirectory(prefix='axit-protocol-') as temporary:
     check('result' in invalid.request('ping'), 'Oversized input corrupted framing')
     invalid.close()
 
-print(f'Protocol checks passed: {checks} · MCP read-only/write gates + ACP scoped sessions + framing')
+# Multiple windows and client isolation use an independent large temporary index.
+with tempfile.TemporaryDirectory(prefix='axit-pages-') as temporary:
+    base = Path(temporary).resolve()
+    root, state = base/'files', base/'state'
+    (root/'private').mkdir(parents=True)
+    for n in range(10057):
+        (root/f'file-{n:05}.txt').touch()
+    for n in range(125):
+        (root/'private'/f'private-{n:03}.txt').touch()
+    args = ['--root', str(root), '--state-dir', str(state)]
+    subprocess.run([BINARY, *args, 'scan'], capture_output=True, check=True)
+
+    def cli(*command, ok=True):
+        result = subprocess.run([BINARY, *args, *command], capture_output=True, text=True)
+        check((result.returncode == 0) == ok, result.stderr)
+        return json.loads(result.stdout) if ok else result.stderr
+
+    first = cli('search', 'ext:txt', '--limit', '337', '--json')
+    check(first['matched'] == 10182 and len(first['entries']) == 337, first)
+    token = first['page']['next_cursor']
+    second = cli('search', 'ext:txt', '--limit', '337', '--json', '--cursor', token)
+    check(second['page']['offset'] == 337, second)
+    check(not {e['id'] for e in first['entries']} & {e['id'] for e in second['entries']}, 'CLI page duplicates')
+    back = cli('search', 'ext:txt', '--limit', '337', '--json', '--cursor', second['page']['previous_cursor'])
+    check(back['entries'] == first['entries'], 'CLI previous window changed ordering')
+    check(isinstance(cli('browse', '--json'), list), 'Legacy browse JSON array changed shape')
+    browsed = cli('browse', '--page-json', '--sort', 'name', '--limit', '337')
+    check(browsed['matched'] == 10058 and browsed['page']['offset'] == 0, browsed)
+    check(len(cli('browse', '--json', '--sort', 'name', '--limit', '337', '--cursor', browsed['page']['next_cursor'])) == 337, 'Legacy browse cannot continue')
+    cli('search', 'different', '--json', '--cursor', token, ok=False)
+    cli('search', 'ext:txt', '--json', '--limit', '1001', ok=False)
+    cli('browse', '--page-json', '--cursor', token, ok=False)
+
+    mcp = Client([*args, 'mcp'])
+    mcp.request('initialize', {'protocolVersion': '2025-11-25'})
+    current = mcp.tool('axit_search', {'query': 'ext:txt', 'limit': 500})['structuredContent']
+    entries = []
+    while True:
+        check(current['page']['offset'] == len(entries), 'MCP skipped a window')
+        entries.extend(current['entries'])
+        cursor = current['page']['next_cursor']
+        if cursor is None:
+            break
+        current = mcp.tool('axit_search', {'query': 'ext:txt', 'limit': 500, 'cursor': cursor})['structuredContent']
+    check(len(entries) == 10182 and len({e['id'] for e in entries}) == 10182, 'MCP results truncated or duplicated')
+    check([e['name'] for e in entries] == sorted(e['name'] for e in entries), 'MCP sort differs between windows')
+    home = mcp.tool('axit_search', {'query': 'ext:txt', 'cursor': current['page']['first_cursor']})['structuredContent']
+    check(home['page']['offset'] == 0 and home['entries'] == first['entries'][:100], 'MCP first window failed')
+    end = mcp.tool('axit_search', {'query': 'ext:txt', 'limit': 71, 'cursor': home['page']['last_cursor']})['structuredContent']
+    check(end['page']['offset'] == 10111 and end['entries'] == entries[-71:], 'Changed page size lost final entries')
+    for bad in [None, 42, '', '00'*89, 'x'*178, token.upper()]:
+        check(mcp.tool('axit_search', {'query': 'ext:txt', 'cursor': bad})['isError'], 'Invalid cursor accepted')
+    check(mcp.tool('axit_search', {'query': 'ext:txt', 'sort': 'size', 'cursor': token})['isError'], 'Cursor reused with a new sort')
+    check(mcp.tool('axit_browse', {'cursor': token})['isError'], 'Search cursor used to browse')
+    directory = mcp.tool('axit_browse', {'sort': 'name', 'limit': 500})['structuredContent']
+    check(directory['matched'] == 10058, 'Browse only counted the returned prefix')
+    next_dir = mcp.tool('axit_browse', {'sort': 'name', 'limit': 500, 'cursor': directory['page']['next_cursor']})['structuredContent']
+    check(next_dir['page']['offset'] == 500 and next_dir['children'][0]['name'] == 'file-00500.txt', 'Browse sorted a truncated prefix')
+    private_id = cli('search', 'type:dir re:^private$', '--json')['entries'][0]['id']
+    check(mcp.tool('axit_browse', {'entry_id': private_id, 'sort': 'name', 'cursor': directory['page']['next_cursor']})['isError'], 'Cursor reused in a sibling folder')
+
+    acp = Client([*args, 'acp'])
+    acp.request('initialize', {'protocolVersion': 1})
+    scoped = acp.request('session/new', {'cwd': str(root/'private')})['result']['sessionId']
+    wider = acp.request('session/new', {'cwd': str(root)})['result']['sessionId']
+
+    def prompt(session, text, ok=True):
+        response = acp.request('session/prompt', {'sessionId': session, 'prompt': [{'type': 'text', 'text': text}]})
+        check(('result' in response) == ok, response)
+        if not ok:
+            return
+        chunks = [n for n in acp.notifications if n.get('params', {}).get('update', {}).get('sessionUpdate') == 'agent_message_chunk']
+        return json.loads(chunks[-1]['params']['update']['content']['text'])
+
+    scoped_first = prompt(scoped, '/search ext:txt')
+    check(scoped_first['matched'] == 125 and len(scoped_first['entries']) == 100, 'ACP scoped total incorrect')
+    scoped_token = scoped_first['page']['next_cursor']
+    scoped_last = prompt(scoped, f'/search --cursor {scoped_token} ext:txt')
+    check(scoped_last['page']['offset'] == 100 and len(scoped_last['entries']) == 25, 'ACP cannot continue scoped search')
+    check(all(e['path'].startswith(str(root/'private')+'/') for e in scoped_last['entries']), 'ACP continuation escaped its folder')
+    prompt(wider, f'/search --cursor {scoped_token} ext:txt', ok=False)
+    prompt(scoped, f'/search --cursor {token} ext:txt', ok=False)
+    largest = prompt(scoped, '/largest')
+    largest_end = prompt(scoped, '/largest --cursor '+largest['page']['next_cursor'])
+    check(largest_end['page']['offset'] == 100 and not largest_end['page']['next_cursor'], 'ACP largest cannot continue')
+    acp.close()
+
+    # Publication invalidates server cursors; an open immutable reader remains usable until then.
+    mcp.tool('axit_scan')
+    deadline = time.monotonic()+15
+    while time.monotonic() < deadline:
+        if not mcp.tool('axit_status')['structuredContent']['scanning']:
+            break
+        time.sleep(.02)
+    check(mcp.tool('axit_search', {'query': 'ext:txt', 'cursor': token})['isError'], 'Stale generation cursor accepted')
+    check(mcp.tool('axit_search', {'query': 'ext:txt'})['structuredContent']['matched'] == 10182, 'Cannot restart after publication')
+    cli('search', 'ext:txt', '--json', '--cursor', token, ok=False)
+    mcp.close()
+
+print(f'Protocol checks passed: {checks} · MCP read-only/write gates + ACP scoped sessions + framing + cursor pagination')
 

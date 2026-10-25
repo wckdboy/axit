@@ -230,35 +230,64 @@ impl Index {
     }
 
     pub fn children(&self, parent: u32, limit: usize) -> Vec<Entry> {
-        use std::{cmp::Reverse, collections::BinaryHeap};
-        let limit = limit.clamp(1, 1000);
-        let mut best = BinaryHeap::new();
-        for id in 1..self.count {
-            let Some(e) = self.entry(id) else {
-                continue;
-            };
-            if e.parent != parent {
-                continue;
-            }
-            let item = Reverse((e.allocated, id));
-            if best.len() < limit {
-                best.push(item);
-            } else if best.peek().is_some_and(|old| item.0 > old.0) {
-                best.pop();
-                best.push(item);
-            }
+        let hidden = HashSet::new();
+        crate::page::first(
+            self,
+            self.children_spec(parent, crate::query::Sort::Size, &hidden),
+            limit,
+            1..self.count,
+            |e, _| e.parent == parent,
+            None,
+        )
+        .ids
+        .into_iter()
+        .filter_map(|id| self.entry(id))
+        .collect()
+    }
+
+    pub(crate) fn children_spec(
+        &self,
+        parent: u32,
+        sort: crate::query::Sort,
+        hidden: &HashSet<u32>,
+    ) -> crate::page::Spec {
+        let mut key = b"children".to_vec();
+        key.extend_from_slice(&parent.to_le_bytes());
+        crate::page::Spec {
+            sort,
+            binding: crate::page::binding(&key, sort, hidden),
+            summarize: true,
         }
-        let mut entries: Vec<_> = best
-            .into_iter()
-            .filter_map(|Reverse((_, id))| self.entry(id))
-            .collect();
-        entries.sort_unstable_by(|a, b| {
-            b.allocated
-                .cmp(&a.allocated)
-                .then_with(|| self.name(*a).cmp(self.name(*b)))
-        });
-        entries.truncate(limit);
-        entries
+    }
+    pub fn children_page(
+        &self,
+        parent: u32,
+        sort: crate::query::Sort,
+        request: crate::page::Request<'_>,
+        hidden: &HashSet<u32>,
+        generation: Option<(&std::sync::atomic::AtomicU64, u64)>,
+    ) -> Result<crate::page::Page> {
+        ensure!(
+            self.entry(parent).is_some_and(|e| e.is_dir()),
+            "Choose a directory"
+        );
+        crate::page::select(
+            self,
+            self.children_spec(parent, sort, hidden),
+            request,
+            1..self.count,
+            |e, _| e.parent == parent && !self.is_hidden(e.id, hidden),
+            generation,
+        )
+    }
+    pub fn children_cursor_at(
+        &self,
+        parent: u32,
+        sort: crate::query::Sort,
+        hidden: &HashSet<u32>,
+        id: u32,
+    ) -> String {
+        crate::page::at(self, self.children_spec(parent, sort, hidden), id)
     }
 
     pub fn is_hidden(&self, mut id: u32, hidden: &HashSet<u32>) -> bool {

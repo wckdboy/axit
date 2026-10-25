@@ -1,6 +1,7 @@
 pub mod apps;
 pub mod index;
 pub mod ops;
+pub mod page;
 pub mod protocol;
 pub mod query;
 pub mod system;

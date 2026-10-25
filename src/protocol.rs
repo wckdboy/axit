@@ -65,6 +65,22 @@ fn integer(v: &Value, key: &str, default: u64, max: u64) -> Result<u64> {
         }
     }
 }
+fn cursor(v: &Value) -> Result<Option<&str>> {
+    v.get("cursor")
+        .map(|value| value.as_str().context("cursor must be a string"))
+        .transpose()
+}
+fn order(v: &Value, default: Sort) -> Result<Sort> {
+    match v.get("sort") {
+        None => Ok(default),
+        Some(value) => match value.as_str() {
+            Some("name") => Ok(Sort::Name),
+            Some("size") => Ok(Sort::Size),
+            Some("modified") => Ok(Sort::Modified),
+            _ => bail!("Unknown sort"),
+        },
+    }
+}
 fn ids(v: &Value) -> Result<Vec<u32>> {
     let values = v["entry_ids"]
         .as_array()
@@ -220,41 +236,35 @@ impl Shared {
                 self.scan()
             }
             "axit_search" => {
-                keys(args, &["query", "limit", "sort"])?;
+                keys(args, &["query", "limit", "sort", "cursor"])?;
                 let input = args["query"].as_str().context("query must be a string")?;
                 let query = Query::parse(input)?;
                 let limit = integer(args, "limit", 100, 500)? as usize;
                 ensure!(limit > 0, "limit must be at least 1");
-                let sort_name = match args.get("sort") {
-                    None => "name",
-                    Some(value) => value.as_str().context("sort must be a string")?,
-                };
-                let sort = match sort_name {
-                    "name" => Sort::Name,
-                    "size" => Sort::Size,
-                    "modified" => Sort::Modified,
-                    _ => bail!("Unknown sort"),
-                };
+                let sort = order(args, Sort::Name)?;
                 let index = self.index()?;
-                let result = query::search(
+                let result = query::search_page(
                     &index,
                     &query,
                     sort,
-                    limit,
+                    crate::page::Request {
+                        limit,
+                        cursor: cursor(args)?,
+                    },
                     &HashSet::new(),
                     Some((generation, 0)),
-                );
+                )?;
                 let entries = result
                     .ids
                     .iter()
                     .map(|id| entry_json(&index, *id))
                     .collect::<Result<Vec<_>>>()?;
                 Ok(
-                    json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"canceled":result.canceled,"entries":entries}),
+                    json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"canceled":result.canceled,"page":result.paging,"entries":entries}),
                 )
             }
             "axit_browse" => {
-                keys(args, &["entry_id", "limit"])?;
+                keys(args, &["entry_id", "limit", "sort", "cursor"])?;
                 let id = integer(args, "entry_id", 0, u32::MAX as u64 - 1)? as u32;
                 let limit = integer(args, "limit", 100, 500)? as usize;
                 ensure!(limit > 0, "limit must be at least 1");
@@ -263,8 +273,18 @@ impl Shared {
                     index.entry(id).is_some_and(|e| e.is_dir()),
                     "Choose a directory"
                 );
+                let result = index.children_page(
+                    id,
+                    order(args, Sort::Size)?,
+                    crate::page::Request {
+                        limit,
+                        cursor: cursor(args)?,
+                    },
+                    &HashSet::new(),
+                    Some((generation, 0)),
+                )?;
                 Ok(
-                    json!({"folder":entry_json(&index,id)?,"children":index.children(id,limit).iter().map(|e|entry_json(&index,e.id)).collect::<Result<Vec<_>>>()?,"note":"Child folders include their contents; parent and child totals overlap."}),
+                    json!({"folder":entry_json(&index,id)?,"matched":result.matched,"page":result.paging,"canceled":result.canceled,"children":result.ids.iter().map(|id|entry_json(&index,*id)).collect::<Result<Vec<_>>>()?,"note":"Child folders include their contents; parent and child totals overlap."}),
                 )
             }
             "axit_cleanup_plan" | "axit_trash_plan" | "axit_move_plan" => {
@@ -379,14 +399,14 @@ pub fn tools(writes: bool) -> Vec<Value> {
         tool(
             "axit_search",
             "Find indexed filenames. Supports quoted words, globs, ext:, size:, older:, type:, path:, !term and re:.",
-            json!({"query":{"type":"string","maxLength":4096},"limit":{"type":"integer","minimum":1,"maximum":500},"sort":{"enum":["name","size","modified"]}}),
+            json!({"query":{"type":"string","maxLength":4096},"limit":{"type":"integer","minimum":1,"maximum":500},"sort":{"enum":["name","size","modified"]},"cursor":{"type":"string","maxLength":178}}),
             &["query"],
             false,
         ),
         tool(
             "axit_browse",
             "List the largest children of a directory; allocated folder sizes overlap.",
-            json!({"entry_id":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":500}}),
+            json!({"entry_id":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":500},"sort":{"enum":["name","size","modified"]},"cursor":{"type":"string","maxLength":178}}),
             &[],
             false,
         ),
@@ -509,24 +529,37 @@ fn acp_prompt(
             86400,
         )?)?);
     }
-    let (input, sort) = if input == "/largest" {
-        ("", Sort::Size)
+    let (input, sort) = if let Some(rest) = input
+        .strip_prefix("/largest")
+        .filter(|rest| rest.is_empty() || rest.starts_with(' '))
+    {
+        (rest.trim(), Sort::Size)
     } else {
         (input.strip_prefix("/search ").unwrap_or(input), Sort::Name)
     };
+    let (input, cursor) = if let Some(rest) = input.strip_prefix("--cursor ") {
+        let (token, query) = rest.split_once(' ').unwrap_or((rest, ""));
+        (query.trim(), Some(token))
+    } else {
+        (input, None)
+    };
+    ensure!(
+        sort != Sort::Size || input.is_empty(),
+        "Use /largest [--cursor TOKEN]"
+    );
     let mut query = Query::parse(input)?;
     query.set_scope(scope);
-    let result = query::search(
+    let result = query::search_page(
         &index,
         &query,
         sort,
-        100,
+        crate::page::Request { limit: 100, cursor },
         &HashSet::new(),
         Some((cancel, 0)),
-    );
+    )?;
     Ok(
-        json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"canceled":result.canceled,"entries":result.ids.iter().map(|id|entry_json(&index,*id)).collect::<Result<Vec<_>>>()?,
-        "commands":"/search QUERY · /largest · /status · /scan · /apps [QUERY] · /app KEY · /plan ID… · deterministic metadata adapter; no model or file contents required"}),
+        json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"canceled":result.canceled,"page":result.paging,"entries":result.ids.iter().map(|id|entry_json(&index,*id)).collect::<Result<Vec<_>>>()?,
+        "commands":"/search [--cursor TOKEN] QUERY · /largest [--cursor TOKEN] · /status · /scan · /apps [QUERY] · /app KEY · /plan ID… · deterministic metadata adapter; no model or file contents required"}),
     )
 }
 
@@ -684,7 +717,7 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
                     respond(&output, id, json!({"sessionId":session}));
                     send(
                         &output,
-                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"apps","description":"List scoped application metadata","input":{"hint":"optional name"}},{"name":"app","description":"Inspect scoped related files","input":{"hint":"app key"}},{"name":"search","description":"Find indexed filenames","input":{"hint":"query"}},{"name":"largest","description":"Show largest entries"},{"name":"status","description":"Index, disk space and coverage"},{"name":"scan","description":"Refresh the fixed scan scope"},{"name":"plan","description":"Preview safe cache cleanup","input":{"hint":"entry ids"}}]}}}),
+                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"apps","description":"List scoped application metadata","input":{"hint":"optional name"}},{"name":"app","description":"Inspect scoped related files","input":{"hint":"app key"}},{"name":"search","description":"Find indexed filenames","input":{"hint":"[--cursor TOKEN] query"}},{"name":"largest","description":"Show largest entries","input":{"hint":"[--cursor TOKEN]"}},{"name":"status","description":"Index, disk space and coverage"},{"name":"scan","description":"Refresh the fixed scan scope"},{"name":"plan","description":"Preview safe cache cleanup","input":{"hint":"entry ids"}}]}}}),
                     );
                 }
                 Err(e) => error(&output, id, -32602, &e.to_string()),

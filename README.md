@@ -43,9 +43,10 @@ reported zero findings after fixes. The patch addresses its late GitHub HOME
 finding with regressions. Its separate CLI re-review hit the included quota;
 the patch is covered by CI and the review history in [PR #7](https://github.com/wckdboy/axit/pull/7).
 
-Application management (`AXIT-15`) is shipped. Next in Plane: incremental filesystem
-updates (`AXIT-5`), bounded pagination beyond 1,000 results (`AXIT-6`) and native Linux
-distro ownership/removal (`AXIT-18`). These remain planned work.
+Application management (`AXIT-15`) is shipped. Bounded cursor pagination (`AXIT-6`)
+is in progress for the next release: TUI, CLI, MCP and ACP share stable ordering and
+can reach results beyond 1,000. Incremental filesystem updates (`AXIT-5`) follow;
+native Linux distro ownership/removal (`AXIT-18`) remains planned.
 
 ## Install
 
@@ -104,11 +105,16 @@ TUI keys:
   jumps straight to navigation, safely canceling any pending review.
 - `Tab` / `Shift-Tab` cycles navigation, query, results, inspector and action buttons.
   Arrow keys choose a focused button; `Enter` activates it.
-- Arrow keys or `j/k` navigate; `Home` / `End` jumps; `PageUp` / `PageDown` moves a page.
+- Arrow keys or `j/k` navigate; `PageUp` / `PageDown` moves by the viewport and
+  crosses result windows. `Home` / `End` jumps to the first/last result.
+- `[` / `]` or Prev/Next buttons switch bounded result windows. Wheel/touchpad
+  scrolling crosses windows at their boundaries. The list title shows its full range.
 - `Enter` opens a folder or inspects a file; `Backspace` goes up. `Alt-Left` /
   `Alt-Right` retraces history; `Alt-Up` goes up; `Alt-Home` returns to the scope root.
-- `Space` toggles a mark, `Shift-Up/Down` selects a range, `Ctrl-A` marks the listed
-  items, and `Esc` clears marks. Marks do not carry into another folder or query.
+- `Space` toggles a mark, `Shift-Up/Down` selects a range, and `Esc` clears marks.
+  Up to 128 marked items can be reviewed together, including marks on other windows.
+  Sorting preserves marks; changing folder or query clears them. `Ctrl-A` marks the
+  current window when it fits the 128-item review limit.
 - `Delete` / `t` previews Trash, `m` previews a move, `x` verifies a disposable cache.
 - `u` undoes a reversible move, `a` configures automatic cleanup, `r` rescans.
 - `s` sorts the current list; `p` shows an item's containing folder; `g` toggles the Space map.
@@ -145,6 +151,34 @@ Search supports quoted terms, `*.zip` wildcards, `!excluded`, `re:expression`,
 `ext:pdf;png`, `type:file`, `type:dir`, `size:>2gib`, `older:30d` and `path:project`.
 Plain terms use case-insensitive ASCII matching. Terms are combined with AND.
 Size filters use allocated disk space. `gb` is decimal; `gib` is binary.
+
+### Result windows
+
+Space, Find and Clean keep at most 1,000 visible rows and can continue through every
+match. Sorts apply to the full result set: name ascending, allocated size descending,
+or modification time descending, with raw filename and entry id breaking ties.
+The Space map always summarizes the largest eight children across the whole folder.
+Marks refer to entry ids, so reviews include marked files outside the visible window.
+
+CLI search JSON and MCP search/browse include `page` with zero-based `offset`,
+`next_cursor`, `previous_cursor`, `first_cursor` and `last_cursor`. A missing direction
+is `null`. Supply the chosen token as `--cursor TOKEN` (CLI) or `cursor` (MCP) with the
+same query/folder and sort. `matched` counts all results. Limits are 1–1,000 for CLI
+and 1–500 for MCP; ACP returns 100 per window. The page size can change between calls.
+
+```sh
+axit search 'ext:pdf' --json --limit 100
+axit search 'ext:pdf' --json --limit 100 --cursor TOKEN
+axit browse --page-json --sort name --limit 100
+axit browse --page-json --sort name --limit 100 --cursor TOKEN
+```
+
+`browse --json` preserves its original bare array. Use `--page-json` for the envelope
+and continuation tokens. Text output prints the result range and next token to stderr.
+Tokens are opaque and tied to one immutable index generation, filter, scope, sort
+and removed-row overlay. Age filters hold their clock steady while paging. Restart
+from the first window after a new scan or a changed query; stale/mismatched tokens
+are rejected. Tokens are continuation hints, not authentication credentials.
 
 ## Applications
 
@@ -293,6 +327,7 @@ Example MCP client configuration:
 Tools: `axit_status`, `axit_scan`, `axit_search`, `axit_browse`, `axit_cleanup_plan`,
 `axit_move_plan`, `axit_trash_plan`, `axit_apps`, `axit_app_files` and
 `axit_app_data_plan`. Scans run in the background; poll status.
+Search and browse accept `cursor` and `sort`; see [result windows](#result-windows).
 The launch scope is fixed. Mutations are disabled and unadvertised by default.
 Explicit `--allow-mutations` adds annotated apply/undo tools; clients must obtain
 user approval for destructive calls. Plans still require exact confirmation and live
@@ -314,8 +349,10 @@ axit acp --root "$HOME"
 ```
 
 This Agent Client Protocol v1 adapter exposes deterministic metadata commands:
-`/search QUERY`, `/largest`, `/status`, `/scan`, `/apps [QUERY]`, `/app KEY` and
-`/plan ID…`. Sessions are scoped to
+`/search [--cursor TOKEN] QUERY`, `/largest [--cursor TOKEN]`, `/status`, `/scan`,
+`/apps [QUERY]`, `/app KEY` and `/plan ID…`. Page metadata is included in each search
+response. A continuation cannot be reused under a different session folder.
+Sessions are scoped to
 their working directory within the server's launch scope. Results stream as agent
 message chunks. No language model runs inside AXIT. File execution stays in the TUI
 or explicitly enabled MCP tools. External MCP servers and conversation history are
@@ -328,8 +365,10 @@ not advertised or launched by this adapter.
 - Immutable generations are memory mapped for search and published atomically.
 - One search worker and one listing worker run outside the UI thread. Superseded
   requests are canceled and coalesced to the latest request.
-- A 32-entry generation-aware listing cache keeps folder revisits fast; cache
-  candidate hints are shared for each immutable index. Neither certifies deletion.
+- Result windows use bounded heaps instead of sorting or retaining every match.
+  Each uncached window scans the immutable metadata; deep pages do not grow the heap.
+- A 32-entry generation-aware window cache keeps recent pages and folder revisits
+  fast; cache candidate hints are shared for each index. Neither certifies deletion.
 - At most 1 GiB per index; refreshing keeps the previous generation plus up to
   2 GiB of temporary construction space until publication completes.
 - Previous complete index survives cancellation, invalid output or a failed rebuild.
@@ -380,6 +419,9 @@ native Apple Silicon and both Linux musl release binaries with the protocol,
 installer and PTY suites; Intel Mac packages are also exercised locally under
 Rosetta. The standard Check workflow runs on macOS and Linux, including site checks.
 Run `npm --prefix site run check` to build and verify the website independently.
+Fixtures with more than 10,000 files exercise every window, duplicate sort keys,
+changing page sizes, stale cursors, scoped ACP continuations, off-screen marked-file
+reviews, cancellation and keyboard/mouse navigation in a real PTY.
 Development and test builds disable incremental compilation and debug information to limit local
 build storage. Filesystem mutation tests operate only on temporary fixtures.
 

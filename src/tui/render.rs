@@ -63,10 +63,12 @@ fn label(cmd: Command, compact: bool) -> &'static str {
         (Command::Leftovers, false) => "l Data",
         (Command::RefreshApps, true) => "Reload",
         (Command::RefreshApps, false) => "r Reload",
+        (Command::PreviousPage, _) => "[ Prev",
+        (Command::NextPage, _) => "Next ]",
         _ => "Open",
     }
 }
-fn toolbar(width: u16, height: u16, view: View) -> (Vec<(Command, Rect)>, u16, bool) {
+fn toolbar(width: u16, height: u16, view: View, paged: bool) -> (Vec<(Command, Rect)>, u16, bool) {
     let commands: &[Command] = if view == View::Apps {
         &[
             Command::Install,
@@ -83,6 +85,8 @@ fn toolbar(width: u16, height: u16, view: View) -> (Vec<(Command, Rect)>, u16, b
             Command::Back,
             Command::Forward,
             Command::Parent,
+            Command::PreviousPage,
+            Command::NextPage,
             Command::Open,
             Command::Find,
             Command::Map,
@@ -102,6 +106,9 @@ fn toolbar(width: u16, height: u16, view: View) -> (Vec<(Command, Rect)>, u16, b
     let mut y = 0;
     let mut result = Vec::new();
     for &cmd in commands {
+        if !paged && matches!(cmd, Command::PreviousPage | Command::NextPage) {
+            continue;
+        }
         if view != View::Apps
             && (height < 20 || width < 60)
             && !matches!(
@@ -112,6 +119,8 @@ fn toolbar(width: u16, height: u16, view: View) -> (Vec<(Command, Rect)>, u16, b
                     | Command::Clean
                     | Command::Undo
                     | Command::Help
+                    | Command::PreviousPage
+                    | Command::NextPage
             )
         {
             continue;
@@ -192,8 +201,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         );
         return;
     }
-    let (buttons, footer_height, compact_toolbar) =
-        toolbar(area.width.saturating_sub(2), area.height, app.view);
+    let (buttons, footer_height, compact_toolbar) = toolbar(
+        area.width.saturating_sub(2),
+        area.height,
+        app.view,
+        app.pages.nav.next_cursor.is_some() || app.pages.nav.previous_cursor.is_some(),
+    );
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -556,34 +569,30 @@ fn list(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = if app.listing {
         " Loading indexed items… · navigation stays available ".to_string()
     } else {
+        let start = if app.ids.is_empty() {
+            0
+        } else {
+            app.pages.nav.offset + 1
+        };
+        let end = app.pages.nav.offset + app.ids.len() as u64;
         match app.view {
             View::Find => {
                 if app.searching {
                     " Searching… ".into()
                 } else {
                     format!(
-                        " {} {} · {:.0} ms · {} listed ",
+                        " {} {} · {start}–{end} · {:.0} ms ",
                         app.matched,
                         if app.matched == 1 { "match" } else { "matches" },
-                        app.search_ms,
-                        app.ids.len()
+                        app.search_ms
                     )
                 }
             }
             View::Clean => format!(
-                " Caches · {} of {} candidates · estimates ",
-                app.ids.len(),
+                " Caches · {start}–{end} of {} · estimates ",
                 app.folder_count
             ),
-            _ => format!(
-                " Files · {} listed{} ",
-                app.ids.len(),
-                if app.ids.len() == 1000 {
-                    " · largest 1000"
-                } else {
-                    ""
-                }
-            ),
+            _ => format!(" Files · {start}–{end} of {} ", app.folder_count),
         }
     };
     let block = pane(title, app.focus == Focus::List);
@@ -704,10 +713,12 @@ fn list(frame: &mut Frame, app: &mut App, area: Rect) {
         ));
     }
     if app.ids.is_empty() {
-        let message = if let Some(error) = &app.search_error
-            && app.view == View::Find
-        {
-            format!("Search could not run:\n\n{error}")
+        let message = if let Some(error) = &app.search_error {
+            if app.view == View::Find {
+                format!("Search could not run:\n\n{error}")
+            } else {
+                format!("Page could not load · Home restarts\n\n{error}")
+            }
         } else if app.searching {
             "Searching…".into()
         } else if app.listing {
@@ -957,6 +968,8 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
                 "Space map: g shows/hides · click selects · double-click opens",
                 "/ or Ctrl-F Search · Tab / Shift-Tab cycles navigation and content",
                 "↑↓ / j k Move · Home / End First / last · PgUp / PgDn One page",
+                "[ / ] Previous / next results · Home / End First / last result window",
+                "Marks follow items across result windows · review at most 128 items",
                 "Enter / → Open folder or inspect file · Backspace / ← Parent",
                 "Alt-← / Alt-→ History · Alt-↑ Parent · Alt-Home Scope root",
                 "Space Toggle mark · Shift-↑↓ Range · Ctrl-A Mark listed items",

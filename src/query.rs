@@ -1,13 +1,8 @@
 use crate::index::{Entry, Index};
 use anyhow::{Context, Result, bail, ensure};
 use regex::bytes::{Regex, RegexBuilder};
-use serde::Serialize;
-use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, HashSet},
-    sync::atomic::{AtomicU64, Ordering},
-    time::Instant,
-};
+use sha2::{Digest, Sha256};
+use std::{collections::HashSet, sync::atomic::AtomicU64};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Sort {
@@ -18,6 +13,7 @@ pub enum Sort {
 }
 
 pub struct Query {
+    input_hash: [u8; 32],
     terms: Vec<(Regex, bool)>,
     paths: Vec<Regex>,
     extensions: Vec<Vec<u8>>,
@@ -27,13 +23,7 @@ pub struct Query {
     scope: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct SearchResult {
-    pub ids: Vec<u32>,
-    pub matched: u64,
-    pub elapsed_ms: f64,
-    pub canceled: bool,
-}
+pub use crate::page::Page as SearchResult;
 
 pub fn words(input: &str) -> Result<Vec<String>> {
     let mut tokens = Vec::new();
@@ -132,6 +122,7 @@ impl Query {
     pub fn parse(input: &str) -> Result<Self> {
         ensure!(input.len() <= 4096, "Search is too long");
         let mut q = Self {
+            input_hash: Sha256::digest(input.as_bytes()).into(),
             terms: Vec::new(),
             paths: Vec::new(),
             extensions: Vec::new(),
@@ -160,7 +151,7 @@ impl Query {
             } else if let Some(s) = token.strip_prefix("older:") {
                 let days: i64 = s.trim_end_matches('d').parse().context("Use older:30d")?;
                 ensure!((0..=365000).contains(&days), "Age is out of range");
-                q.older = Some(crate::unix_now() - days * 86400);
+                q.older = Some(days);
             } else if let Some(s) = token.strip_prefix("path:") {
                 q.paths.push(pattern(s, false)?);
             } else if token == "type:dir" || token == "folder:" {
@@ -182,7 +173,7 @@ impl Query {
         self.scope = Some(id);
     }
 
-    fn matches(&self, index: &Index, e: Entry) -> bool {
+    fn matches(&self, index: &Index, e: Entry, as_of: i64) -> bool {
         if self
             .scope
             .is_some_and(|scope| !index.is_descendant(e.id, scope))
@@ -192,7 +183,10 @@ impl Query {
         if self.folder.is_some_and(|dir| dir != e.is_dir()) {
             return false;
         }
-        if self.older.is_some_and(|before| e.modified > before) {
+        if self
+            .older
+            .is_some_and(|days| e.modified > as_of.saturating_sub(days * 86400))
+        {
             return false;
         }
         for &(op, n) in &self.sizes {
@@ -240,6 +234,21 @@ impl Query {
     }
 }
 
+impl Query {
+    fn page_spec(&self, sort: Sort, hidden: &HashSet<u32>) -> crate::page::Spec {
+        let mut key = b"search".to_vec();
+        key.extend_from_slice(&self.input_hash);
+        key.extend_from_slice(&self.scope.unwrap_or(u32::MAX).to_le_bytes());
+        crate::page::Spec {
+            sort,
+            binding: crate::page::binding(&key, sort, hidden),
+            summarize: false,
+        }
+    }
+    pub fn cursor_at(&self, index: &Index, sort: Sort, hidden: &HashSet<u32>, id: u32) -> String {
+        crate::page::at(index, self.page_spec(sort, hidden), id)
+    }
+}
 pub fn search(
     index: &Index,
     query: &Query,
@@ -248,64 +257,29 @@ pub fn search(
     hidden: &HashSet<u32>,
     generation: Option<(&AtomicU64, u64)>,
 ) -> SearchResult {
-    let started = Instant::now();
-    let limit = limit.clamp(1, 1000);
-    let mut matched = 0;
-    let mut names: BinaryHeap<(&[u8], u32)> = BinaryHeap::new();
-    let mut numbers: BinaryHeap<Reverse<(u64, u32)>> = BinaryHeap::new();
-    let mut canceled = false;
-    for id in 0..index.count {
-        if id.is_multiple_of(2048)
-            && generation.is_some_and(|(g, n)| g.load(Ordering::Relaxed) != n)
-        {
-            canceled = true;
-            break;
-        }
-        let Some(e) = index.entry(id) else {
-            continue;
-        };
-        if index.is_hidden(id, hidden) || !query.matches(index, e) {
-            continue;
-        }
-        matched += 1;
-        if matches!(sort, Sort::Name) {
-            let item = (index.name(e), id);
-            if names.len() < limit {
-                names.push(item);
-            } else if names.peek().is_some_and(|old| item < *old) {
-                names.pop();
-                names.push(item);
-            }
-        } else {
-            let key = if matches!(sort, Sort::Size) {
-                e.allocated
-            } else {
-                e.modified.max(0) as u64
-            };
-            let item = Reverse((key, id));
-            if numbers.len() < limit {
-                numbers.push(item);
-            } else if numbers.peek().is_some_and(|old| item.0 > old.0) {
-                numbers.pop();
-                numbers.push(item);
-            }
-        }
-    }
-    let ids = if matches!(sort, Sort::Name) {
-        names
-            .into_sorted_vec()
-            .into_iter()
-            .map(|(_, id)| id)
-            .collect()
-    } else {
-        let mut v: Vec<_> = numbers.into_iter().map(|Reverse(x)| x).collect();
-        v.sort_unstable_by(|a, b| b.cmp(a));
-        v.into_iter().map(|(_, id)| id).collect()
-    };
-    SearchResult {
-        ids,
-        matched,
-        elapsed_ms: started.elapsed().as_secs_f64() * 1000.,
-        canceled,
-    }
+    crate::page::first(
+        index,
+        query.page_spec(sort, hidden),
+        limit,
+        0..index.count,
+        |e, as_of| !index.is_hidden(e.id, hidden) && query.matches(index, e, as_of),
+        generation,
+    )
+}
+pub fn search_page(
+    index: &Index,
+    query: &Query,
+    sort: Sort,
+    request: crate::page::Request<'_>,
+    hidden: &HashSet<u32>,
+    generation: Option<(&AtomicU64, u64)>,
+) -> Result<SearchResult> {
+    crate::page::select(
+        index,
+        query.page_spec(sort, hidden),
+        request,
+        0..index.count,
+        |e, as_of| !index.is_hidden(e.id, hidden) && query.matches(index, e, as_of),
+        generation,
+    )
 }

@@ -78,6 +78,8 @@ enum Commands {
         query: String,
         #[arg(long, default_value = "100")]
         limit: usize,
+        #[arg(long, help = "Opaque continuation from the previous result page")]
+        cursor: Option<String>,
         #[arg(long, value_enum, default_value = "name")]
         sort: Order,
         #[arg(long)]
@@ -89,6 +91,16 @@ enum Commands {
         id: u32,
         #[arg(long, default_value = "100")]
         limit: usize,
+        #[arg(long, value_enum, default_value = "size")]
+        sort: Order,
+        #[arg(long)]
+        cursor: Option<String>,
+        #[arg(
+            long,
+            conflicts_with = "json",
+            help = "JSON envelope with children, total count and navigation cursors"
+        )]
+        page_json: bool,
         #[arg(long)]
         json: bool,
     },
@@ -350,6 +362,16 @@ fn output(value: impl serde::Serialize) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
 }
+fn print_page(page: &axit::page::Navigation, returned: usize, total: u64, elapsed: f64) {
+    let start = if returned == 0 { 0 } else { page.offset + 1 };
+    eprintln!(
+        "{start}–{} of {total} · {elapsed:.1} ms",
+        page.offset + returned as u64
+    );
+    if let Some(cursor) = &page.next_cursor {
+        eprintln!("Next cursor (--cursor): {cursor}");
+    }
+}
 fn current(state: &std::path::Path) -> Result<Index> {
     Index::open(&axit::index_path(state))
 }
@@ -406,17 +428,33 @@ fn run() -> Result<()> {
         Commands::Search {
             query,
             limit,
+            cursor,
             sort,
             json,
         } => {
             let index = current(&state)?;
             let q = Query::parse(&query)?;
-            let result = query::search(&index, &q, sort.into(), limit, &HashSet::new(), None);
+            ensure!(
+                (1..=axit::page::MAX_SIZE).contains(&limit),
+                "limit must be between 1 and 1000"
+            );
+            let result = query::search_page(
+                &index,
+                &q,
+                sort.into(),
+                axit::page::Request {
+                    limit,
+                    cursor: cursor.as_deref(),
+                },
+                &HashSet::new(),
+                None,
+            )?;
             if json {
                 output(
-                    serde_json::json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"entries":result.ids.iter().map(|id|axit::protocol::entry_json(&index,*id)).collect::<Result<Vec<_>>>()?}),
+                    serde_json::json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"page":result.paging,"entries":result.ids.iter().map(|id|axit::protocol::entry_json(&index,*id)).collect::<Result<Vec<_>>>()?}),
                 )
             } else {
+                let returned = result.ids.len();
                 for id in result.ids {
                     let e = index.entry(id).context("Missing entry")?;
                     println!(
@@ -426,18 +464,47 @@ fn run() -> Result<()> {
                         axit::text(&index.path(id)?)
                     );
                 }
-                eprintln!("{} matches · {:.1} ms", result.matched, result.elapsed_ms);
+                print_page(&result.paging, returned, result.matched, result.elapsed_ms);
                 Ok(())
             }
         }
-        Commands::Browse { id, limit, json } => {
+        Commands::Browse {
+            id,
+            limit,
+            sort,
+            cursor,
+            page_json,
+            json,
+        } => {
             let index = current(&state)?;
             ensure!(
                 index.entry(id).is_some_and(|e| e.is_dir()),
                 "Choose a directory id"
             );
-            let children = index.children(id, limit.clamp(1, 1000));
-            if json {
+            ensure!(
+                (1..=axit::page::MAX_SIZE).contains(&limit),
+                "limit must be between 1 and 1000"
+            );
+            let result = index.children_page(
+                id,
+                sort.into(),
+                axit::page::Request {
+                    limit,
+                    cursor: cursor.as_deref(),
+                },
+                &HashSet::new(),
+                None,
+            )?;
+            let children: Vec<_> = result
+                .ids
+                .iter()
+                .filter_map(|id| index.entry(*id))
+                .collect();
+            if page_json {
+                output(
+                    serde_json::json!({"folder":axit::protocol::entry_json(&index,id)?,"matched":result.matched,"page":result.paging,"children":children.iter().map(|e|axit::protocol::entry_json(&index,e.id)).collect::<Result<Vec<_>>>()?}),
+                )
+            } else if json {
                 output(
                     children
                         .iter()
@@ -455,6 +522,12 @@ fn run() -> Result<()> {
                         index.display_name(e)
                     );
                 }
+                print_page(
+                    &result.paging,
+                    result.ids.len(),
+                    result.matched,
+                    result.elapsed_ms,
+                );
                 Ok(())
             }
         }
