@@ -64,6 +64,11 @@ enum Operation {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Manage applications, related files and reviewed native installation.
+    Apps {
+        #[command(subcommand)]
+        action: Option<AppCommand>,
+    },
     /// Open the keyboard-first storage browser (also the default).
     Tui,
     /// Build an immutable, bounded metadata index. Previous index survives failure.
@@ -132,6 +137,215 @@ enum Commands {
     Acp,
 }
 
+#[derive(Subcommand)]
+enum AppCommand {
+    /// List installed application identities and stable selection keys.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect exact and possible related files; never executes a launcher.
+    Inspect {
+        app: String,
+        #[arg(long)]
+        leftover: bool,
+    },
+    /// List remembered and unmatched data candidates; absence is not proof of disuse.
+    Leftovers {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Preview installation; --confirm INSTALL runs the native manager interactively.
+    Install {
+        package: String,
+        #[arg(long)]
+        provider: Option<axit::apps::Provider>,
+        #[arg(long)]
+        confirm: Option<String>,
+    },
+    /// Preview removal. Native managers keep user data; standalone bundles use reversible Trash.
+    Uninstall {
+        app: String,
+        #[arg(long)]
+        include_data: bool,
+        #[arg(long)]
+        include_review: bool,
+        #[arg(long)]
+        confirm: Option<String>,
+    },
+    /// Preview related-data Trash, optionally from leftover candidates.
+    TrashData {
+        app: String,
+        #[arg(long)]
+        leftover: bool,
+        #[arg(long)]
+        include_data: bool,
+        #[arg(long)]
+        include_review: bool,
+        #[arg(long)]
+        confirm: Option<String>,
+    },
+}
+
+fn apps_cli(action: Option<AppCommand>, root: Option<PathBuf>, state: PathBuf) -> Result<()> {
+    use axit::apps;
+    let Some(action) = action else {
+        ensure!(
+            io::stdout().is_terminal() && io::stdin().is_terminal(),
+            "Apps needs an interactive terminal; use apps list/inspect for scripts"
+        );
+        let root = root
+            .or_else(|| {
+                current(&state)
+                    .ok()
+                    .and_then(|i| i.path(0).ok())
+                    .filter(|p| p.is_dir())
+            })
+            .unwrap_or(axit::home()?)
+            .canonicalize()
+            .context("Root folder is unavailable")?;
+        return axit::tui::run_apps(root, state);
+    };
+    let context = apps::Context::system()?;
+    if let AppCommand::Install {
+        package,
+        provider,
+        confirm,
+    } = action
+    {
+        let provider = provider
+            .or_else(|| context.tools.available().first().copied())
+            .context("Install Homebrew on macOS or Flatpak on Linux first")?;
+        let plan = apps::install_plan(&context.tools, provider, &package)?;
+        return if let Some(confirm) = confirm {
+            plan.run(&state, &confirm)
+        } else {
+            output(plan)
+        };
+    }
+    let catalog = apps::inventory(&context);
+    match action {
+        AppCommand::List { json } | AppCommand::Leftovers { json } => {
+            let list = if matches!(action, AppCommand::Leftovers { .. }) {
+                apps::Catalog {
+                    apps: apps::leftovers(&context, &catalog, &state)?,
+                    warnings: catalog.warnings.clone(),
+                }
+            } else {
+                catalog
+            };
+            if json {
+                output(
+                    serde_json::json!({"apps":list.apps.iter().map(|a|serde_json::json!({"key":a.key(),"application":a})).collect::<Vec<_>>(),"warnings":list.warnings}),
+                )
+            } else {
+                for app in list.apps {
+                    println!("{}\t{}\t{}", app.key(), app.source_label(), app.name);
+                }
+                for warning in list.warnings {
+                    eprintln!("{warning}");
+                }
+                Ok(())
+            }
+        }
+        AppCommand::Inspect { ref app, leftover } => {
+            let data = if leftover {
+                apps::Catalog {
+                    apps: apps::leftovers(&context, &catalog, &state)?,
+                    warnings: catalog.warnings.clone(),
+                }
+            } else {
+                catalog.clone()
+            };
+            let app = apps::resolve(&data, app)?;
+            output(
+                serde_json::json!({"key":app.key(),"application":app,"files":apps::review_files(&context,&catalog,app),"warnings":catalog.warnings}),
+            )
+        }
+        AppCommand::Uninstall { .. } | AppCommand::TrashData { .. } => {
+            let (query, leftover, include_data, include_review, confirm, uninstall) = match action {
+                AppCommand::Uninstall {
+                    app,
+                    include_data,
+                    include_review,
+                    confirm,
+                } => (app, false, include_data, include_review, confirm, true),
+                AppCommand::TrashData {
+                    app,
+                    leftover,
+                    include_data,
+                    include_review,
+                    confirm,
+                } => (app, leftover, include_data, include_review, confirm, false),
+                _ => unreachable!(),
+            };
+            let data = if leftover {
+                apps::Catalog {
+                    apps: apps::leftovers(&context, &catalog, &state)?,
+                    warnings: catalog.warnings.clone(),
+                }
+            } else {
+                catalog.clone()
+            };
+            let app = apps::resolve(&data, &query)?;
+            if uninstall
+                && matches!(
+                    app.source,
+                    apps::Source::Brew { .. } | apps::Source::Flatpak { .. }
+                )
+            {
+                ensure!(
+                    !include_data && !include_review,
+                    "Native uninstall keeps user data; review apps leftovers / trash-data afterward"
+                );
+                let plan = apps::uninstall_plan(&context.tools, app)?;
+                return if let Some(confirm) = confirm {
+                    plan.run(&state, &confirm)
+                } else {
+                    output(plan)
+                };
+            }
+            ensure!(
+                !uninstall || matches!(app.source, apps::Source::Bundle) && !app.protected,
+                "Use this application's native installer; Files can review related data"
+            );
+            let files = apps::review_files(&context, &catalog, app);
+            let paths: Vec<_> = files
+                .iter()
+                .filter(|f| {
+                    f.selectable
+                        && (if f.kind == apps::RelatedKind::Application {
+                            uninstall
+                        } else {
+                            (apps::default_file(app, f, false) || include_data || include_review)
+                                && (!f.contains_user_data || include_data)
+                                && (f.confidence == apps::Confidence::Exact || include_review)
+                        })
+                })
+                .map(|f| f.path.clone())
+                .collect();
+            ensure!(
+                !paths.is_empty(),
+                "No selected files; inspect the app and opt into personal data or uncertain matches explicitly"
+            );
+            let index = current(&state).ok();
+            let plan = ops::plan_app_trash(
+                std::path::Path::new("/"),
+                &paths,
+                &state,
+                index.as_ref(),
+                Some(app),
+            )?;
+            if let Some(confirm) = confirm {
+                output(ops::apply(&state, &plan, &confirm)?)
+            } else {
+                output(plan)
+            }
+        }
+        AppCommand::Install { .. } => unreachable!(),
+    }
+}
+
 fn output(value: impl serde::Serialize) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
@@ -155,6 +369,12 @@ fn run() -> Result<()> {
     } else {
         axit::state_dir()?
     };
+    if matches!(cli.command, Some(Commands::Apps { .. })) {
+        let Some(Commands::Apps { action }) = cli.command else {
+            unreachable!()
+        };
+        return apps_cli(action, cli.root, state);
+    }
     let root = cli
         .root
         .or_else(|| current(&state).ok().and_then(|i| i.path(0).ok()))
@@ -162,6 +382,7 @@ fn run() -> Result<()> {
         .canonicalize()
         .context("Root folder is unavailable")?;
     match cli.command.unwrap_or(Commands::Tui) {
+        Commands::Apps { action } => apps_cli(action, Some(root), state),
         Commands::Tui => {
             ensure!(
                 io::stdout().is_terminal() && io::stdin().is_terminal(),

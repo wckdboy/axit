@@ -29,16 +29,22 @@ impl App {
     }
 
     fn cycle_view(&mut self, delta: isize, nav_focus: bool) {
-        let tabs = [View::Space, View::Find, View::Clean, View::Activity];
+        let tabs = [
+            View::Space,
+            View::Find,
+            View::Clean,
+            View::Activity,
+            View::Apps,
+        ];
         let current = tabs.iter().position(|v| *v == self.view).unwrap_or(0);
         self.navigate(
-            tabs[(current as isize + delta).rem_euclid(4) as usize],
+            tabs[(current as isize + delta).rem_euclid(tabs.len() as isize) as usize],
             nav_focus,
         );
     }
 
     fn content_focus(&self) -> Focus {
-        if self.view == View::Find {
+        if matches!(self.view, View::Find | View::Apps) {
             Focus::Query
         } else {
             Focus::List
@@ -74,6 +80,12 @@ impl App {
             .unwrap_or(0);
         let focused = location.focused.and_then(|p| index?.find_path(&p));
         self.refresh(focused, location.offset);
+        if matches!(self.view, View::Space | View::Find | View::Clean)
+            && self.index.is_none()
+            && self.scan.is_none()
+        {
+            self.scan();
+        }
         self.ui.hits.clear();
     }
 
@@ -99,8 +111,14 @@ impl App {
                 self.status = "Ready".into();
             }
             self.refresh(None, 0);
+            if matches!(view, View::Space | View::Find | View::Clean)
+                && self.index.is_none()
+                && self.scan.is_none()
+            {
+                self.scan();
+            }
         }
-        self.focus = if view == View::Find {
+        self.focus = if matches!(view, View::Find | View::Apps) {
             Focus::Query
         } else {
             Focus::List
@@ -144,7 +162,7 @@ impl App {
         let row = previous
             .saturating_add_signed(delta)
             .min(self.ids.len().saturating_sub(1));
-        if range {
+        if range && self.view != View::Apps {
             self.range(self.anchor.unwrap_or(previous), row);
         } else {
             self.anchor = None;
@@ -192,6 +210,9 @@ impl App {
     }
 
     pub(super) fn enabled(&self, cmd: Command) -> bool {
+        if let Some(enabled) = self.apps_enabled(cmd) {
+            return enabled;
+        }
         match cmd {
             Command::Back => !self.back.is_empty(),
             Command::Forward => !self.forward.is_empty(),
@@ -220,12 +241,15 @@ impl App {
         }
     }
 
-    fn command(&mut self, cmd: Command) -> bool {
+    pub(super) fn command(&mut self, cmd: Command) -> bool {
         if !self.enabled(cmd) {
             if matches!(cmd, Command::Trash | Command::Clean | Command::Move) {
                 self.status =
                     "Choose an item and wait for the current search/scan to finish".into();
             }
+            return false;
+        }
+        if self.app_command(cmd) {
             return false;
         }
         match cmd {
@@ -293,6 +317,7 @@ impl App {
                                 .as_str()
                                 .and_then(|p| index.as_ref()?.find_path(std::path::Path::new(p)));
                             OperationUpdate {
+                                mutated: true,
                                 summary: format!(
                                     "Restored {}",
                                     v["restored"].as_str().unwrap_or("file")
@@ -313,6 +338,11 @@ impl App {
             Command::Auto => self.open_modal(Modal::Auto),
             Command::Help => self.open_modal(Modal::Help),
             Command::Quit => return self.quit(),
+            Command::Install
+            | Command::Uninstall
+            | Command::AppFiles
+            | Command::Leftovers
+            | Command::RefreshApps => {}
         }
         false
     }
@@ -339,7 +369,7 @@ impl App {
 
     fn tab(&mut self, reverse: bool) {
         let mut fields = vec![Focus::Nav, Focus::List];
-        if self.view == View::Find {
+        if matches!(self.view, View::Find | View::Apps) {
             fields.insert(1, Focus::Query);
         }
         if self.ui.inspector.width > 0 {
@@ -368,6 +398,7 @@ impl App {
         let checking = self.busy && !self.applying;
         let chosen = checking.then(|| self.chosen());
         let query = checking.then(|| self.query.text.clone());
+        let app_key = checking.then(|| self.app_target().map(crate::apps::Application::key));
         let focus = self.focus;
         let quit = self.dispatch_event(event);
         if checking
@@ -375,6 +406,9 @@ impl App {
             && !self.applying
             && (chosen.as_ref().is_some_and(|ids| *ids != self.chosen())
                 || query.as_ref().is_some_and(|text| *text != self.query.text)
+                || app_key.as_ref().is_some_and(|key| {
+                    *key != self.app_target().map(crate::apps::Application::key)
+                })
                 || (self.focus == Focus::Query && focus != Focus::Query)
                 || self.modal.is_some())
         {
@@ -392,6 +426,14 @@ impl App {
                 Some(Modal::Destination(input)) => {
                     input.insert(&text);
                     self.modal_focus = 2;
+                }
+                Some(Modal::AppInstall(form)) => {
+                    form.target.insert(&text);
+                    self.modal_focus = 2;
+                }
+                None if self.view == View::Apps && self.focus == Focus::Query => {
+                    self.apps.filter.insert(&text);
+                    self.apps_filter(None);
                 }
                 None if self.focus == Focus::Query && self.query.insert(&text) => {
                     self.query_changed()
@@ -438,13 +480,20 @@ impl App {
             }
             return false;
         }
-        if let KeyCode::Char(digit @ '1'..='4') = key.code {
+        if let KeyCode::Char(digit @ '1'..='5') = key.code {
             let modified = ctrl || alt;
-            let editing = matches!(self.modal, Some(Modal::Destination(_)))
-                || (self.modal.is_none() && self.focus == Focus::Query);
+            let editing = matches!(
+                self.modal,
+                Some(Modal::Destination(_) | Modal::AppInstall(_))
+            ) || (self.modal.is_none() && self.focus == Focus::Query);
             if modified || (!editing && !key.modifiers.contains(KeyModifiers::SUPER)) {
-                let view = [View::Space, View::Find, View::Clean, View::Activity]
-                    [digit as usize - '1' as usize];
+                let view = [
+                    View::Space,
+                    View::Find,
+                    View::Clean,
+                    View::Activity,
+                    View::Apps,
+                ][digit as usize - '1' as usize];
                 self.navigate(view, !modified);
                 return false;
             }
@@ -466,6 +515,10 @@ impl App {
             return self.quit();
         }
         if ctrl && key.code == KeyCode::Char('f') {
+            if self.view == View::Apps {
+                self.focus = Focus::Query;
+                return false;
+            }
             return self.command(Command::Find);
         }
         if alt {
@@ -479,6 +532,9 @@ impl App {
         }
         if key.code == KeyCode::Tab || key.code == KeyCode::BackTab {
             self.tab(shift || key.code == KeyCode::BackTab);
+            return false;
+        }
+        if self.app_key(key) {
             return false;
         }
         if self.focus == Focus::Query {
@@ -508,7 +564,7 @@ impl App {
                     return false;
                 }
                 KeyCode::End => {
-                    self.navigate(View::Activity, true);
+                    self.navigate(View::Apps, true);
                     return false;
                 }
                 KeyCode::Enter | KeyCode::Down | KeyCode::Char(' ') => {
@@ -676,6 +732,9 @@ impl App {
             self.dismiss_dialog();
             return;
         }
+        if self.app_modal_key(key) {
+            return;
+        }
         if let Some(Modal::Menu(selected)) = &mut self.modal {
             match key.code {
                 KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => {
@@ -694,16 +753,24 @@ impl App {
                 key.code == KeyCode::BackTab || key.modifiers.contains(KeyModifiers::SHIFT);
             let fields = match &self.modal {
                 Some(Modal::Preview(plan)) if !plan.entries.is_empty() => 2,
-                Some(Modal::Destination(_)) => 3,
-                Some(Modal::Auto) => 2,
+                Some(Modal::Destination(_) | Modal::AppInstall(_) | Modal::AppFiles(_)) => 3,
+                Some(Modal::Auto | Modal::Managed(_)) => 2,
                 _ => 1,
             };
             self.modal_focus = (self.modal_focus + if reverse { fields - 1 } else { 1 }) % fields;
             return;
         }
         if self.modal_focus < 2 && matches!(key.code, KeyCode::Left | KeyCode::Right) {
-            if matches!(&self.modal, Some(Modal::Destination(_) | Modal::Auto))
-                || matches!(&self.modal,Some(Modal::Preview(plan)) if !plan.entries.is_empty())
+            if matches!(
+                &self.modal,
+                Some(
+                    Modal::Destination(_)
+                        | Modal::Auto
+                        | Modal::AppInstall(_)
+                        | Modal::AppFiles(_)
+                        | Modal::Managed(_)
+                )
+            ) || matches!(&self.modal,Some(Modal::Preview(plan)) if !plan.entries.is_empty())
             {
                 self.modal_focus = 1 - self.modal_focus;
             }
@@ -752,6 +819,9 @@ impl App {
     }
 
     fn confirm_modal(&mut self) {
+        if self.app_confirm() {
+            return;
+        }
         let Some(modal) = self.modal.take() else {
             return;
         };
@@ -848,6 +918,27 @@ impl App {
                     if let Some(Modal::Destination(input)) = &mut self.modal {
                         input.click(column.saturating_sub(self.ui.modal_input.x));
                     }
+                    if let Some(Modal::AppInstall(form)) = &mut self.modal {
+                        form.target
+                            .click(column.saturating_sub(self.ui.modal_input.x));
+                    }
+                }
+                Hit::AppFile(i) => {
+                    if let Some(Modal::AppFiles(review)) = &mut self.modal {
+                        review.cursor = i;
+                        self.modal_focus = 2;
+                        if review.rows.get(i).is_some_and(|f| f.selectable)
+                            && !review.selected.remove(&i)
+                        {
+                            review.selected.insert(i);
+                        }
+                    }
+                }
+                Hit::AppProvider => {
+                    if let Some(Modal::AppInstall(form)) = &mut self.modal {
+                        form.provider = (form.provider + 1) % form.providers.len();
+                        form.error = None;
+                    }
                 }
                 Hit::Menu(i) => {
                     if let Some(Modal::Menu(selected)) = &mut self.modal {
@@ -863,7 +954,13 @@ impl App {
             Hit::View(view) => self.set_view(view),
             Hit::Query => {
                 self.focus = Focus::Query;
-                self.query.click(column.saturating_sub(self.ui.query.x));
+                if self.view == View::Apps {
+                    self.apps
+                        .filter
+                        .click(column.saturating_sub(self.ui.query.x));
+                } else {
+                    self.query.click(column.saturating_sub(self.ui.query.x));
+                }
             }
             Hit::Crumb(id) => self.folder(id, None),
             Hit::Command(cmd) => return self.command(cmd),
@@ -894,6 +991,13 @@ impl App {
                 3
             };
             if self.modal.is_some() {
+                if let Some(Modal::AppFiles(review)) = &mut self.modal {
+                    review.cursor = review
+                        .cursor
+                        .saturating_add_signed(delta as isize)
+                        .min(review.rows.len().saturating_sub(1));
+                    self.modal_focus = 2;
+                }
                 self.modal_scroll = self
                     .modal_scroll
                     .saturating_add_signed(delta)
@@ -977,6 +1081,26 @@ impl App {
             MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
         ) && let Some(Hit::Row(row) | Hit::Check(row)) = hit
         {
+            if self.view == View::Apps {
+                let old = self.table.selected();
+                self.select_row(row);
+                self.focus = Focus::List;
+                self.drag_anchor = None;
+                if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
+                    self.last_click = None;
+                    return self.command(Command::AppFiles);
+                }
+                let double = old == Some(row)
+                    && self.last_click.is_some_and(|(id, time)| {
+                        id == row as u32 && time.elapsed() < Duration::from_millis(400)
+                    });
+                self.last_click = Some((row as u32, Instant::now()));
+                if double {
+                    self.last_click = None;
+                    return self.command(Command::AppFiles);
+                }
+                return false;
+            }
             self.pressed = None;
             self.focus = Focus::List;
             let previous = self.table.selected().unwrap_or(row);

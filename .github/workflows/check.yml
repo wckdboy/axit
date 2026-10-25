@@ -20,14 +20,14 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked --jobs 2 -- -D warnings
       - run: cargo test --locked --jobs 2 -- --test-threads=1
-      - run: cargo build --release --locked --jobs 2
+      - run: cargo build --release --examples --bin axit --locked --jobs 2
       - run: python3 scripts/protocol-test.py target/release/axit
       - run: sh scripts/installer-test.sh target/release/axit
       - name: Terminal keyboard and mouse integration
         run: |
           python3 -m venv .venv-ui
           .venv-ui/bin/pip install pyte==0.8.2
-          .venv-ui/bin/python scripts/tui-test.py target/release/axit
+          .venv-ui/bin/python scripts/tui-test.py target/release/axit /tmp/axit-screens target/release/examples/apps_fixture
       - name: Static project site
         run: npm --prefix site run check
 

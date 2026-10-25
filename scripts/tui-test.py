@@ -25,18 +25,19 @@ if screens:
     screens.mkdir(parents=True,exist_ok=True)
 
 class Session:
-    def __init__(self,root,state,recovery,base):
+    def __init__(self,root,state,recovery,base,executable=None,extra_env=None):
         self.master,self.slave=os.openpty()
         self.resize(140,38,notify=False)
         self.before=subprocess.run(['stty','-g'],stdin=self.slave,capture_output=True,text=True,check=True).stdout.strip()
         self.restore_file=base/'restored-terminal.txt'
         env=dict(os.environ,TERM='xterm-256color',COLORTERM='truecolor',AXIT_TEST_RESTORE=str(self.restore_file),AXIT_TRASH_DIR=str(recovery))
         env.pop('NO_COLOR',None)
+        env.update(extra_env or {})
         def terminal_session():
             os.setsid()
             fcntl.ioctl(self.slave,termios.TIOCSCTTY,0)
         wrapper='"$@"\naxit_test_status=$?\nstty -g > "$AXIT_TEST_RESTORE"\nexit "$axit_test_status"\n'
-        args=[binary,'--root',str(root),'--state-dir',str(state)]
+        args=[executable or binary,'--root',str(root),'--state-dir',str(state)]
         self.process=subprocess.Popen(['/bin/sh','-c',wrapper,'axit-ui-test',*args],stdin=self.slave,stdout=self.slave,stderr=self.slave,preexec_fn=terminal_session,close_fds=True,env=env)
         self.screen=pyte.Screen(140,38)
         self.stream=pyte.Stream(self.screen)
@@ -138,8 +139,8 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         app.send(b'\x15')  # Clear the fixture query before later editing tests.
         app.send(b'\x1b[1;5A\x1b[D\x1b[B')  # Ctrl-Up -> navigation -> Space -> list.
         app.wait(lambda:'Space map' in app.content())
-        app.send(b'1234')
-        app.wait(lambda:'Operations' in app.content())
+        app.send(b'12345')
+        app.wait(lambda:'Installed apps' in app.content() or 'Apps · loading' in app.content())
         app.send(b'\x1b[6;5~')  # Ctrl-PageDown wraps to Space without Escape.
         app.wait(lambda:'Space map' in app.content())
         app.click('downloads',left=True,double=True)
@@ -209,3 +210,57 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
     try:app.finish(terminate=True)
     finally:app.close()
 print('PTY checks passed: keyboard editing/paging, SGR mouse clicks/double-clicks, wheel/touchpad input, reviewed Trash, Undo, modal scrolling, resize, Ctrl-Q/SIGTERM and terminal-mode restoration')
+
+if len(sys.argv)>3:
+    import plistlib
+    fixture_binary=str(Path(sys.argv[3]).resolve())
+    with tempfile.TemporaryDirectory(prefix='axit-apps-ui-',dir='/tmp') as temporary:
+        root=Path(temporary).resolve();state=root/'state';recovery=root/'recovery'
+        (root/'.axit-apps-fixture').write_bytes(b'axit-owned-test-fixture')
+        for name in ['Alpha','Beta']:
+            path=root/f'Applications/{name}.app/Contents';path.mkdir(parents=True)
+            (path/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':f'org.wckd.{name}','CFBundleName':name}))
+            (root/f'Library/Caches/org.wckd.{name}').mkdir(parents=True)
+            data=root/f'Library/Application Support/org.wckd.{name}';data.mkdir(parents=True);(data/'personal.txt').write_text('keep')
+        app=Session(root,state,recovery,root,executable=fixture_binary,extra_env={'AXIT_APP_FIXTURE_ROOT':str(root)})
+        try:
+            app.wait(lambda:'Installed apps' in app.content() and 'Beta' in app.content(),timeout=10)
+            app.snapshot('apps')
+            app.resize(48,16);assert '5 Apps' in app.content() and 'Alpha' in app.content(),app.content()
+            app.resize(140,38)
+            app.click('Beta',left=True)
+            app.send(b'\x1b[3~')
+            app.wait(lambda:'Application files' in app.content())
+            app.snapshot('app-files')
+            app.click('Review selected')
+            app.wait(lambda:'Review plan' in app.content())
+            app.click('Move to Trash',last=True)
+            app.wait(lambda:not (root/'Applications/Beta.app').exists())
+            app.wait(lambda:'Installed apps' in app.content() and 'completed' in app.content())
+            assert (root/'Library/Application Support/org.wckd.Beta/personal.txt').read_text()=='keep'
+            app.send(b'u');app.wait(lambda:(root/'Library/Caches/org.wckd.Beta').exists())
+            app.send(b'u');app.wait(lambda:(root/'Applications/Beta.app').exists())
+            assert not (state/'disk.idx').exists(),'Apps or Undo launched an unnecessary disk scan'
+            app.wait(lambda:'Installed apps' in app.content() and 'Beta' in app.content())
+            app.click('Alpha',left=True);app.send(b'\x1b[3~')
+            app.wait(lambda:'Native package manager' in app.content())
+            app.snapshot('native-review')
+            app.click('Uninstall',last=True)
+            app.wait(lambda:'Proceed with fixture uninstall?' in app.content());app.send(b'y\r')
+            app.wait(lambda:'Press Enter to return' in app.content())
+            app.send(b'\r');app.wait(lambda:not (root/'Applications/Alpha.app').exists() and 'Installed apps' in app.content())
+            assert (root/'Library/Application Support/org.wckd.Alpha/personal.txt').exists()
+            app.click('Data',last=True);app.wait(lambda:'Data candidates' in app.content() and 'Alpha' in app.content())
+            app.snapshot('app-data')
+            app.click('Install',last=True);app.wait(lambda:'Application package' in app.content())
+            app.send(b'gamma\r');app.wait(lambda:'Native package manager' in app.content())
+            app.click('[ Install ]');app.wait(lambda:'Proceed with fixture install?' in app.content());app.send(b'y\r');app.wait(lambda:'Press Enter to return' in app.content())
+            app.send(b'\r');app.wait(lambda:(root/'Applications/Gamma.app').exists() and 'Data candidates' in app.content())
+            app.click('Data',last=True);app.wait(lambda:'Installed apps' in app.content() and 'Gamma' in app.content())
+            app.click('Gamma',left=True);app.send(b'\x1b[3~');app.wait(lambda:'Native package manager' in app.content())
+            app.click('Uninstall',last=True);app.wait(lambda:'Proceed with fixture uninstall?' in app.content());app.send(b'n\r')
+            app.wait(lambda:'Press Enter to return' in app.content())
+            assert (root/'Applications/Gamma.app').exists(),'Canceled native prompt changed the fixture'
+            app.finish(terminate=True)
+        finally:app.close()
+    print('Apps PTY checks passed: standalone Trash/Undo, data kept, native uninstall/install, leftover history and terminal restoration')

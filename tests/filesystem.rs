@@ -767,3 +767,27 @@ fn cache_cleanup_works_through_the_data_volume_alias() {
     assert!(!cache.exists());
     assert!(root.join("source.rs").exists());
 }
+
+#[test]
+fn apps_commands_do_not_require_the_previous_scan_root_to_still_exist() {
+    let (_temp, root, state) = fixture();
+    drop(scan(&root, &state));
+    fs::remove_dir(&root).unwrap();
+    let result = std::process::Command::new(env!("CARGO_BIN_EXE_axit"))
+        .arg("--state-dir")
+        .arg(&state)
+        .args([
+            "apps",
+            "install",
+            "invalid/package",
+            "--provider",
+            "flatpak",
+        ])
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(error.contains("Invalid package identifier"), "{error}");
+    assert!(!error.contains("Root folder is unavailable"));
+    assert!(state.join("disk.idx").exists());
+}

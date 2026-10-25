@@ -1,3 +1,4 @@
+pub mod apps;
 pub mod index;
 pub mod ops;
 pub mod protocol;

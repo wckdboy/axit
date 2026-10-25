@@ -24,7 +24,14 @@ fn fixture(files: usize) -> (tempfile::TempDir, App) {
         Arc::new(AtomicBool::new(false)),
     )
     .unwrap();
-    (temp, App::new(root, state))
+    let context = crate::apps::Context {
+        home: root.clone(),
+        app_roots: vec![root.join("Applications")],
+        desktop_roots: vec![root.join("launchers")],
+        tools: Default::default(),
+        scope: None,
+    };
+    (temp, App::new_in(root, state, View::Space, Some(context)))
 }
 fn key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> bool {
     app.handle_event(Event::Key(KeyEvent::new(code, modifiers)))
@@ -96,6 +103,8 @@ fn settle(app: &mut App) {
             && !app.search_inflight
             && !app.listing
             && !app.list_inflight
+            && !app.apps.inflight
+            && !app.apps.loading
             && app.scan.is_none()
         {
             return;
@@ -301,6 +310,7 @@ fn uncertain_per_entry_failures_mark_the_index_stale_without_completed_paths() {
     let (_temp, mut app) = fixture(2);
     app.tx
         .send(Message::Applied(Ok(OperationUpdate {
+            mutated: true,
             summary: "Operation needs reconciliation".into(),
             hidden: vec![],
             restored: None,
@@ -608,6 +618,7 @@ fn number_navigation_and_focus_shortcuts_never_require_escape() {
             ('2', View::Find),
             ('3', View::Clean),
             ('4', View::Activity),
+            ('5', View::Apps),
         ] {
             plain(&mut app, KeyCode::Char(digit));
             assert_eq!(app.view, view);
@@ -622,7 +633,7 @@ fn number_navigation_and_focus_shortcuts_never_require_escape() {
         KeyCode::BackTab,
         KeyModifiers::CONTROL | KeyModifiers::SHIFT,
     );
-    assert_eq!(app.view, View::Activity);
+    assert_eq!(app.view, View::Apps);
     plain(&mut app, KeyCode::F(6));
     assert_eq!(app.focus, Focus::Nav);
     plain(&mut app, KeyCode::Home);
@@ -912,4 +923,62 @@ fn minimum_find_view_shows_a_result_and_accessible_actions() {
             .any(|(_, h)| *h == Hit::Command(Command::Trash))
     );
     assert!(render(&mut app, 48, 14).contains("Expand to 48 × 16"));
+}
+
+#[test]
+fn apps_view_filters_reviews_data_and_keeps_navigation_and_confirmation_accessible() {
+    let (_temp, mut app) = fixture(1);
+    let context = app.apps.context.as_ref().unwrap().clone();
+    let path = context.app_roots[0].join("Alpha.app");
+    fs::create_dir_all(path.join("Contents")).unwrap();
+    fs::write(path.join("Contents/Info.plist"),br#"<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.wckd.Alpha</string><key>CFBundleName</key><string>Alpha</string></dict></plist>"#).unwrap();
+    let cache = context.home.join("Library/Caches/org.wckd.Alpha");
+    fs::create_dir_all(&cache).unwrap();
+    let personal = context
+        .home
+        .join("Library/Application Support/org.wckd.Alpha");
+    fs::create_dir_all(&personal).unwrap();
+    plain(&mut app, KeyCode::Char('5'));
+    settle(&mut app);
+    assert_eq!(app.view, View::Apps);
+    plain(&mut app, KeyCode::Down);
+    app.handle_event(Event::Paste("Alpha".into()));
+    assert_eq!(app.apps.filter.text, "Alpha");
+    plain(&mut app, KeyCode::Enter);
+    assert!(app.app_target().is_some());
+    let screen = render(&mut app, 48, 16);
+    assert!(screen.contains("5 Apps") && screen.contains("Alpha"));
+    click(&mut app, Hit::Command(Command::Uninstall));
+    settle(&mut app);
+    assert!(matches!(app.modal, Some(Modal::AppFiles(_))));
+    if let Some(Modal::AppFiles(review)) = &app.modal {
+        assert!(
+            review
+                .rows
+                .iter()
+                .enumerate()
+                .any(|(i, f)| f.path == cache && review.selected.contains(&i))
+        );
+        assert!(
+            review
+                .rows
+                .iter()
+                .enumerate()
+                .all(|(i, f)| f.path != personal || !review.selected.contains(&i))
+        );
+    }
+    render(&mut app, 80, 24);
+    assert_eq!(app.modal_focus, 2);
+    plain(&mut app, KeyCode::Esc);
+    assert!(app.modal.is_none() && path.exists() && personal.exists());
+    plain(&mut app, KeyCode::Delete);
+    settle(&mut app);
+    render(&mut app, 80, 24);
+    plain(&mut app, KeyCode::Enter);
+    settle(&mut app);
+    assert!(matches!(app.modal, Some(Modal::Preview(_))));
+    assert_eq!(app.modal_focus, 0);
+    key(&mut app, KeyCode::Up, KeyModifiers::CONTROL);
+    assert_eq!(app.focus, Focus::Nav);
+    assert!(app.modal.is_none() && path.exists() && personal.exists());
 }

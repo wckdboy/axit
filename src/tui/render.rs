@@ -13,7 +13,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-fn pane(title: impl Into<Line<'static>>, focused: bool) -> Block<'static> {
+pub(super) fn pane(title: impl Into<Line<'static>>, focused: bool) -> Block<'static> {
     Block::default()
         .title(title)
         .borders(Borders::ALL)
@@ -53,33 +53,57 @@ fn label(cmd: Command, compact: bool) -> &'static str {
         (Command::Help, false) => "? Help",
         (Command::Quit, true) => "Quit",
         (Command::Quit, false) => "q Quit",
+        (Command::Install, true) => "Install",
+        (Command::Install, false) => "i Install",
+        (Command::Uninstall, true) => "Remove",
+        (Command::Uninstall, false) => "Del Remove",
+        (Command::AppFiles, true) => "Files",
+        (Command::AppFiles, false) => "f Files",
+        (Command::Leftovers, true) => "Data",
+        (Command::Leftovers, false) => "l Data",
+        (Command::RefreshApps, true) => "Reload",
+        (Command::RefreshApps, false) => "r Reload",
         _ => "Open",
     }
 }
-fn toolbar(width: u16, height: u16) -> (Vec<(Command, Rect)>, u16, bool) {
-    let commands = [
-        Command::Back,
-        Command::Forward,
-        Command::Parent,
-        Command::Open,
-        Command::Find,
-        Command::Map,
-        Command::Select,
-        Command::Trash,
-        Command::Move,
-        Command::Clean,
-        Command::Undo,
-        Command::Rescan,
-        Command::Auto,
-        Command::Help,
-        Command::Quit,
-    ];
+fn toolbar(width: u16, height: u16, view: View) -> (Vec<(Command, Rect)>, u16, bool) {
+    let commands: &[Command] = if view == View::Apps {
+        &[
+            Command::Install,
+            Command::Uninstall,
+            Command::AppFiles,
+            Command::Leftovers,
+            Command::Undo,
+            Command::RefreshApps,
+            Command::Help,
+            Command::Quit,
+        ]
+    } else {
+        &[
+            Command::Back,
+            Command::Forward,
+            Command::Parent,
+            Command::Open,
+            Command::Find,
+            Command::Map,
+            Command::Select,
+            Command::Trash,
+            Command::Move,
+            Command::Clean,
+            Command::Undo,
+            Command::Rescan,
+            Command::Auto,
+            Command::Help,
+            Command::Quit,
+        ]
+    };
     let compact = width < 160 || height < 28;
     let mut x = 0;
     let mut y = 0;
     let mut result = Vec::new();
-    for cmd in commands {
-        if (height < 20 || width < 60)
+    for &cmd in commands {
+        if view != View::Apps
+            && (height < 20 || width < 60)
             && !matches!(
                 cmd,
                 Command::Parent
@@ -92,7 +116,8 @@ fn toolbar(width: u16, height: u16) -> (Vec<(Command, Rect)>, u16, bool) {
         {
             continue;
         }
-        if height < 28
+        if view != View::Apps
+            && height < 28
             && width >= 60
             && matches!(
                 cmd,
@@ -122,7 +147,11 @@ fn button(
     enabled: bool,
 ) {
     let active = enabled && (focused || app.hover == Some(hit) || app.pressed == Some(hit));
-    let danger = matches!(hit, Hit::Command(Command::Trash | Command::Clean))
+    let danger = matches!(
+        hit,
+        Hit::Command(Command::Trash | Command::Clean | Command::Uninstall)
+    ) || (hit == Hit::ModalConfirm
+        && matches!(&app.modal, Some(Modal::Managed(plan)) if plan.uninstall))
         || (hit == Hit::ModalConfirm
             && matches!(&app.modal,Some(Modal::Preview(plan)) if matches!(plan.action,Action::Trash|Action::Clean)));
     let accent = if danger { DANGER } else { ACCENT };
@@ -164,13 +193,17 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         return;
     }
     let (buttons, footer_height, compact_toolbar) =
-        toolbar(area.width.saturating_sub(2), area.height);
+        toolbar(area.width.saturating_sub(2), area.height, app.view);
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(4),
             Constraint::Length(1),
-            Constraint::Length(if app.view == View::Find { 3 } else { 2 }),
+            Constraint::Length(if matches!(app.view, View::Find | View::Apps) {
+                3
+            } else {
+                2
+            }),
             Constraint::Min(3),
             Constraint::Length(1),
             Constraint::Length(footer_height),
@@ -235,7 +268,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         (View::Space, "1 Space"),
         (View::Find, "2 Find"),
         (View::Clean, "3 Clean"),
-        (View::Activity, "4 Activity"),
+        (
+            View::Activity,
+            if area.width < 60 {
+                "4 Log"
+            } else {
+                "4 Activity"
+            },
+        ),
+        (View::Apps, "5 Apps"),
     ] {
         let rect = Rect::new(x, layout[1].y, text.len() as u16 + 2, 1);
         button(
@@ -291,11 +332,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         if app.focus == Focus::Query && app.modal.is_none() && inner.width > 0 {
             frame.set_cursor_position((inner.x + cursor, inner.y));
         }
+    } else if app.view == View::Apps {
+        applications::query(frame, app, layout[2]);
     } else {
         breadcrumbs(frame, app, layout[2]);
     }
 
-    if app.view == View::Activity {
+    if app.view == View::Apps {
+        applications::draw(frame, app, layout[3]);
+    } else if app.view == View::Activity {
         let mut lines = vec![Line::styled("Operations", Style::default().fg(ACCENT))];
         if app.activity.is_empty() {
             lines.push(Line::raw("No operations in this session."));
@@ -377,7 +422,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             p.entries, p.errors, app.status
         )
     } else if app.needs_rescan {
-        format!("{} · r refreshes indexed sizes", app.status)
+        format!(
+            "{} · {}",
+            app.status,
+            if app.view == View::Apps {
+                "indexed sizes are stale"
+            } else {
+                "r refreshes indexed sizes"
+            }
+        )
     } else {
         app.status.clone()
     };
@@ -775,7 +828,7 @@ fn centered(area: Rect, width: u16, height: u16) -> Rect {
         h,
     )
 }
-fn max_scroll(paragraph: &Paragraph, area: Rect) -> u16 {
+pub(super) fn max_scroll(paragraph: &Paragraph, area: Rect) -> u16 {
     paragraph
         .line_count(area.width)
         .saturating_sub(area.height as usize)
@@ -802,7 +855,16 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
     } else if let Some(Modal::Preview(plan)) = &app.modal {
         let rows = (plan.entries.len() + plan.blocked.len()).min(7) as u16;
         centered(container, 78, (10 + rows * 2).clamp(12, 24))
-    } else if matches!(app.modal, Some(Modal::Destination(_) | Modal::Auto)) {
+    } else if let Some(Modal::AppFiles(review)) = &app.modal {
+        centered(
+            container,
+            92,
+            (10 + (review.rows.len().min(8) as u16) * 2).clamp(12, 26),
+        )
+    } else if matches!(
+        app.modal,
+        Some(Modal::Destination(_) | Modal::Auto | Modal::AppInstall(_) | Modal::Managed(_))
+    ) {
         centered(container, 76, 19)
     } else {
         centered(container, 92, 32)
@@ -815,6 +877,9 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
         Some(Modal::Help) => " AXIT / keyboard & mouse ",
         Some(Modal::Inspect) => " File details ",
         Some(Modal::Menu(_)) => " Actions ",
+        Some(Modal::AppFiles(_)) => " Application files ",
+        Some(Modal::AppInstall(_)) => " Install application ",
+        Some(Modal::Managed(_)) => " Native package manager ",
         _ => " AXIT ",
     };
     let mut block = pane(title, true);
@@ -823,6 +888,9 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
     }
     let inside = block.inner(box_area);
     frame.render_widget(block, box_area);
+    if applications::modal(frame, app, inside) {
+        return;
+    }
     if let Some(Modal::Menu(selected)) = &app.modal {
         let selected = *selected;
         for (i, (cmd, text)) in MENU.iter().enumerate() {
@@ -881,9 +949,9 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
     let (lines, confirmation) = match &app.modal {
         Some(Modal::Help) => (
             vec![
-                "1 Space · 2 Find · 3 Clean · 4 Activity · Ctrl-Tab cycles views",
+                "1 Space · 2 Find · 3 Clean · 4 Activity · 5 Apps",
                 "Ctrl-Tab / Ctrl-PgDn Next section · Ctrl-Shift-Tab / Ctrl-PgUp Previous",
-                "Alt-1…4 Switch anywhere, including dialogs · F6 Focus navigation",
+                "Alt-1…5 Switch anywhere, including dialogs · F6 Focus navigation",
                 "Navigation: ←→ choose a section · Enter / Down opens it",
                 "Up at the first row returns to navigation · Ctrl-Up jumps there",
                 "Space map: g shows/hides · click selects · double-click opens",
@@ -896,6 +964,7 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
                 "Delete / t Trash preview · m Move · x Cache-cleanup preview",
                 "u Undo last move · s Sort · click column headings to sort",
                 "r Refresh index · a Automatic cleanup · q / Ctrl-Q Quit",
+                "Apps: i Install · Delete Remove · f Files · l Data · r Reload apps",
                 "",
                 "Click a row to focus; double-click to open or inspect.",
                 "Click [ ] to mark; Ctrl-click toggles; Shift-click selects a range.",
@@ -1025,7 +1094,15 @@ fn preview(frame: &mut Frame, app: &mut App, inside: Rect) {
     for entry in &plan.entries {
         lines.push(Line::styled(entry.path.clone(), Style::default().fg(FG)));
         lines.push(Line::styled(
-            format!("  {} · {}", bytes(entry.bytes), entry.reason),
+            format!(
+                "  {} · {}",
+                if entry.size_unknown {
+                    "Size not indexed".into()
+                } else {
+                    bytes(entry.bytes)
+                },
+                entry.reason
+            ),
             Style::default().fg(DIM),
         ));
     }
@@ -1040,7 +1117,12 @@ fn preview(frame: &mut Frame, app: &mut App, inside: Rect) {
         ));
     }
     let summary = format!(
-        "{} on disk · {} skipped",
+        "{}{} on disk · {} skipped",
+        if plan.entries.iter().any(|e| e.size_unknown) {
+            "At least "
+        } else {
+            ""
+        },
         bytes(plan.total_bytes),
         plan.blocked.len()
     );
@@ -1086,7 +1168,13 @@ fn preview(frame: &mut Frame, app: &mut App, inside: Rect) {
     );
 }
 
-fn modal_buttons(frame: &mut Frame, app: &mut App, area: Rect, confirm: &str, enabled: bool) {
+pub(super) fn modal_buttons(
+    frame: &mut Frame,
+    app: &mut App,
+    area: Rect,
+    confirm: &str,
+    enabled: bool,
+) {
     let confirm_width = if enabled {
         (confirm.width() as u16 + 4).min(area.width.saturating_sub(12))
     } else {

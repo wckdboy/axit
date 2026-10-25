@@ -5,10 +5,10 @@ use sha2::{Digest, Sha256};
 use std::{
     ffi::CString,
     fs::{self, Metadata, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
-        fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+        fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
     process::Command,
@@ -60,6 +60,8 @@ impl Identity {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlannedEntry {
     pub id: u32,
+    #[serde(default)]
+    pub size_unknown: bool,
     pub path: String,
     pub native: String,
     pub identity: Identity,
@@ -79,11 +81,56 @@ pub struct Plan {
     pub root: String,
     pub action: Action,
     #[serde(default)]
+    pub app_bundle: Option<ApplicationBundle>,
+    #[serde(default)]
+    pub application: Option<crate::apps::Application>,
+    #[serde(default)]
     pub destination_identity: Option<Identity>,
     pub minimum_age_secs: i64,
     pub entries: Vec<PlannedEntry>,
     pub blocked: Vec<Blocked>,
     pub total_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ApplicationBundle {
+    native: String,
+    identifier: String,
+    info_digest: String,
+}
+
+impl ApplicationBundle {
+    fn checked(path: &Path) -> Result<Self> {
+        let app = crate::apps::read_bundle(path)?;
+        let mut data = vec![];
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(path.join("Contents/Info.plist"))?;
+        ensure!(
+            file.metadata()?.is_file(),
+            "Application metadata is not a regular file"
+        );
+        file.take(2 * 1024 * 1024 + 1).read_to_end(&mut data)?;
+        ensure!(
+            data.len() <= 2 * 1024 * 1024,
+            "Application metadata is too large"
+        );
+        Ok(Self {
+            native: encode(path),
+            identifier: app.id,
+            info_digest: format!("{:x}", Sha256::digest(&data)),
+        })
+    }
+    fn validate(&self, path: &Path) -> Result<()> {
+        ensure!(self.native == encode(path), "Application path changed");
+        let current = Self::checked(path)?;
+        ensure!(
+            self.identifier == current.identifier && self.info_digest == current.info_digest,
+            "Application identity changed since review"
+        );
+        Ok(())
+    }
 }
 #[derive(Debug, Serialize)]
 pub struct Applied {
@@ -173,6 +220,25 @@ fn private_dir(path: &Path) -> Result<()> {
 }
 
 fn identity_path(path: &Path, root: &Path) -> Result<Metadata> {
+    identity_path_checked(path, root, false)
+}
+
+fn identity_for_plan(path: &Path, root: &Path, plan: &Plan) -> Result<Metadata> {
+    let approved = plan
+        .app_bundle
+        .as_ref()
+        .filter(|app| app.native == encode(path));
+    if let Some(app) = approved {
+        ensure!(
+            plan.action == Action::Trash,
+            "Application bundles can only be moved to Trash"
+        );
+        app.validate(path)?;
+    }
+    identity_path_checked(path, root, approved.is_some())
+}
+
+fn identity_path_checked(path: &Path, root: &Path, approved_app: bool) -> Result<Metadata> {
     ensure!(
         path.is_absolute() && path.starts_with(root) && path != root,
         "Outside the selected scope, or scope root itself"
@@ -198,10 +264,23 @@ fn identity_path(path: &Path, root: &Path) -> Result<Metadata> {
         );
     }
     let m = fs::symlink_metadata(path)?;
+    let application = approved_app && m.is_dir() && standard_application_path(path);
     ensure!(
-        m.uid() == unsafe { libc::geteuid() },
+        m.uid() == unsafe { libc::geteuid() } || (application && m.uid() == 0),
         "Not owned by the current user"
     );
+    if application {
+        let parent = CString::new(
+            path.parent()
+                .context("Application has no parent")?
+                .as_os_str()
+                .as_bytes(),
+        )?;
+        ensure!(
+            unsafe { libc::access(parent.as_ptr(), libc::W_OK | libc::X_OK) } == 0,
+            "Application folder requires native administrator authorization"
+        );
+    }
     ensure!(m.is_file() || m.is_dir(), "Special files cannot be mutated");
     let home = crate::home()?.canonicalize()?;
     let policy_path = path
@@ -242,12 +321,36 @@ fn identity_path(path: &Path, root: &Path) -> Result<Metadata> {
         "/System/Volumes/Data/private/var/db",
     ];
     ensure!(
-        !protected
-            .iter()
-            .any(|p| policy_path.starts_with(p) || Path::new(p).starts_with(&policy_path)),
+        application
+            || !protected
+                .iter()
+                .any(|p| policy_path.starts_with(p) || Path::new(p).starts_with(&policy_path)),
         "System and installed application folders are protected"
     );
     Ok(m)
+}
+
+fn standard_application_path(path: &Path) -> bool {
+    let logical = path
+        .strip_prefix("/System/Volumes/Data")
+        .map(|p| Path::new("/").join(p))
+        .unwrap_or_else(|_| path.into());
+    let Ok(relative) = logical.strip_prefix("/Applications") else {
+        return false;
+    };
+    if !relative
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("app"))
+    {
+        return false;
+    }
+    relative.parent().is_some_and(|parent| {
+        parent.components().all(|c| {
+            !Path::new(c.as_os_str())
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("app"))
+        })
+    })
 }
 
 pub fn cache_label(path: &Path) -> Option<&'static str> {
@@ -525,7 +628,7 @@ struct PlanBudget {
 fn plan_with_budget(
     index: &Index,
     ids: &[u32],
-    mut action: Action,
+    action: Action,
     state: &Path,
     min_age: i64,
     budget: Option<PlanBudget>,
@@ -534,8 +637,157 @@ fn plan_with_budget(
         !ids.is_empty() && ids.len() <= 128,
         "Choose between 1 and 128 entries"
     );
+    let paths = ids
+        .iter()
+        .map(|id| {
+            let record = index.entry(*id).context("Unknown index entry")?;
+            Ok(Selection {
+                id: *id,
+                path: index.path(*id)?,
+                indexed_identity: Some((record.device, record.inode)),
+                allocated: Some(record.allocated),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    plan_selected(&index.path(0)?, paths, action, state, min_age, budget, None)
+}
+
+struct Selection {
+    id: u32,
+    path: PathBuf,
+    indexed_identity: Option<(u64, u64)>,
+    allocated: Option<u64>,
+}
+struct ApplicationReview {
+    app: crate::apps::Application,
+    bundle: Option<ApplicationBundle>,
+}
+
+/// Review live paths without requiring a full-disk metadata scan first.
+/// Only reversible Trash is exposed here; normal identity/process/claim checks apply.
+pub fn plan_app_trash(
+    root: &Path,
+    paths: &[PathBuf],
+    state: &Path,
+    index: Option<&Index>,
+    application: Option<&crate::apps::Application>,
+) -> Result<Plan> {
+    ensure!(
+        !paths.is_empty() && paths.len() <= 128,
+        "Choose between 1 and 128 entries"
+    );
+    let root = root.canonicalize()?;
+    let paths = paths
+        .iter()
+        .map(|path| {
+            ensure!(path.is_absolute(), "Application paths must be absolute");
+            crate::scoped_alias(path, &root)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let review = application
+        .map(|app| -> Result<ApplicationReview> {
+            let bundle = if matches!(app.source, crate::apps::Source::Bundle) {
+                if let Some(path) = &app.path {
+                    let path = crate::scoped_alias(path, &root)?;
+                    if paths.contains(&path) {
+                        ensure!(!app.protected, "System applications are protected");
+                        Some(ApplicationBundle::checked(&path)?)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            Ok(ApplicationReview {
+                app: app.clone(),
+                bundle,
+            })
+        })
+        .transpose()?;
+    let records = indexed_app_paths(index, &paths);
+    let selections = paths
+        .into_iter()
+        .zip(records)
+        .map(|(path, record)| {
+            let live = fs::symlink_metadata(&path).ok();
+            let record = record.filter(|r| {
+                live.as_ref()
+                    .is_some_and(|m| m.dev() == r.device && m.ino() == r.inode)
+            });
+            Ok(Selection {
+                id: record.map_or(u32::MAX, |e| e.id),
+                path,
+                indexed_identity: None,
+                allocated: live
+                    .filter(|m| m.is_file())
+                    .map(|m| m.blocks().saturating_mul(512))
+                    .or_else(|| record.map(|e| e.allocated)),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    plan_selected(&root, selections, Action::Trash, state, 0, None, review)
+}
+
+fn indexed_app_paths(index: Option<&Index>, paths: &[PathBuf]) -> Vec<Option<crate::index::Entry>> {
+    let mut result = vec![None; paths.len()];
+    let Some(index) = index else {
+        return result;
+    };
+    let Ok(root) = index.path(0) else {
+        return result;
+    };
+    let aliases: Vec<_> = paths
+        .iter()
+        .map(|p| crate::scoped_alias(p, &root).ok())
+        .collect();
+    let mut names: std::collections::HashMap<Vec<u8>, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (i, path) in aliases.iter().enumerate() {
+        if let Some(name) = path.as_ref().and_then(|p| p.file_name()) {
+            names.entry(name.as_bytes().to_vec()).or_default().push(i);
+        }
+    }
+    if names.is_empty() {
+        return result;
+    }
+    // One metadata pass for all related paths, rather than N full-index lookups.
+    for id in 1..index.count {
+        let Some(entry) = index.entry(id) else {
+            continue;
+        };
+        let Some(candidates) = names.get(index.name(entry)) else {
+            continue;
+        };
+        let Ok(path) = index.path(id) else {
+            continue;
+        };
+        for &position in candidates {
+            if aliases[position].as_ref() == Some(&path) {
+                result[position] = Some(entry);
+            }
+        }
+    }
+    result
+}
+
+fn plan_selected(
+    root: &Path,
+    mut paths: Vec<Selection>,
+    mut action: Action,
+    state: &Path,
+    min_age: i64,
+    budget: Option<PlanBudget>,
+    review: Option<ApplicationReview>,
+) -> Result<Plan> {
+    ensure!(
+        !paths.is_empty() && paths.len() <= 128,
+        "Choose between 1 and 128 entries"
+    );
     ensure!(min_age >= 0, "Invalid age rule");
-    let root = index.path(0)?;
+    let root = root.to_path_buf();
     let destination_identity = if let Action::Move { destination } = &mut action {
         let path = PathBuf::from(&*destination);
         ensure!(path.is_absolute(), "Destination must be absolute");
@@ -558,6 +810,9 @@ fn plan_with_budget(
         None
     };
     let open = OpenFiles::capture()?;
+    if let Some(review) = &review {
+        crate::apps::ensure_stopped_with(&review.app, &open)?;
+    }
     let nonce = tempfile::NamedTempFile::new_in(state)?;
     let mut h = Sha256::new();
     h.update(nonce.path().as_os_str().as_bytes());
@@ -567,27 +822,41 @@ fn plan_with_budget(
         created: crate::unix_now(),
         root: encode(&root),
         action,
+        app_bundle: review.as_ref().and_then(|r| r.bundle.clone()),
+        application: review.map(|r| r.app),
         destination_identity,
         minimum_age_secs: min_age,
         entries: Vec::new(),
         blocked: Vec::new(),
         total_bytes: 0,
     };
-    let mut paths: Vec<_> = ids
-        .iter()
-        .map(|id| Ok((*id, index.path(*id)?)))
-        .collect::<Result<_>>()?;
-    paths.sort_unstable_by_key(|(_, p)| p.components().count());
+    let primary = plan
+        .app_bundle
+        .as_ref()
+        .map(|b| decode(&b.native))
+        .transpose()?;
+    paths.sort_unstable_by_key(|s| {
+        (
+            u8::from(primary.as_ref().is_some_and(|p| *p != s.path)),
+            s.path.components().count(),
+        )
+    });
     if budget.is_some() {
-        paths.sort_unstable_by_key(|(id, p)| {
+        paths.sort_unstable_by_key(|s| {
             (
-                p.components().count(),
-                std::cmp::Reverse(index.entry(*id).map_or(0, |e| e.allocated)),
-                *id,
+                s.path.components().count(),
+                std::cmp::Reverse(s.allocated.unwrap_or(0)),
+                s.id,
             )
         });
     }
-    for (id, path) in paths {
+    for selection in paths {
+        let Selection {
+            id,
+            path,
+            indexed_identity,
+            allocated,
+        } = selection;
         if budget.is_some_and(|b| plan.entries.len() >= b.entries || plan.total_bytes >= b.bytes) {
             break;
         }
@@ -599,10 +868,10 @@ fn plan_with_budget(
             continue;
         }
         let inspect = || -> Result<PlannedEntry> {
-            let m = identity_path(&path, &root)?;
-            let record = index.entry(id).context("Unknown index entry")?;
+            let m = identity_for_plan(&path, &root, &plan)?;
             ensure!(
-                record.inode == m.ino() && record.device == m.dev(),
+                indexed_identity
+                    .is_none_or(|(device, inode)| inode == m.ino() && device == m.dev()),
                 "Index is stale: this path now identifies a different file"
             );
             let (fingerprint, bytes, reason) = if plan.action == Action::Clean {
@@ -646,7 +915,13 @@ fn plan_with_budget(
                 }
                 (
                     None,
-                    record.allocated,
+                    allocated.unwrap_or_else(|| {
+                        if m.is_file() {
+                            m.blocks().saturating_mul(512)
+                        } else {
+                            0
+                        }
+                    }),
                     if m.is_dir() {
                         "Includes this directory and all its contents".into()
                     } else {
@@ -656,6 +931,7 @@ fn plan_with_budget(
             };
             Ok(PlannedEntry {
                 id,
+                size_unknown: allocated.is_none() && m.is_dir(),
                 path: crate::text(&path),
                 native: encode(&path),
                 identity: Identity::of(&m),
@@ -681,6 +957,17 @@ fn plan_with_budget(
                 reason: error.to_string(),
             }),
         }
+    }
+    if let Some(bundle) = &plan.app_bundle
+        && !plan.entries.iter().any(|e| e.native == bundle.native)
+    {
+        for entry in plan.entries.drain(..) {
+            plan.blocked.push(Blocked {
+                path: entry.path,
+                reason: "Application cannot be removed; related data kept".into(),
+            });
+        }
+        plan.total_bytes = 0;
     }
     // Watchers can retry blocked candidates indefinitely without accumulating plans.
     if budget.is_some() && plan.entries.is_empty() {
@@ -911,11 +1198,34 @@ fn apply_with_journal(
         },
     };
     let mut process_checks = CleanChecks::new(OpenFiles::capture);
+    if let Some(application) = &plan.application {
+        if let Err(error) = crate::apps::ensure_stopped(application) {
+            result.blocked = plan
+                .entries
+                .iter()
+                .map(|entry| Blocked {
+                    path: entry.path.clone(),
+                    reason: error.to_string(),
+                })
+                .collect();
+            result.note="Application check failed; no files changed. Create a fresh review after fixing the issue.".into();
+            return Ok(result);
+        }
+        crate::apps::remember(state, application)?;
+    }
+    let mut primary_failed = false;
     for entry in &plan.entries {
+        if primary_failed {
+            result.blocked.push(Blocked {
+                path: entry.path.clone(),
+                reason: "Application could not be moved; related data kept".into(),
+            });
+            continue;
+        }
         let mut changed = false;
         let mut execute = || -> Result<u64> {
             let path = decode(&entry.native)?;
-            let metadata = identity_path(&path, &root)?;
+            let metadata = identity_for_plan(&path, &root, plan)?;
             ensure!(
                 entry.identity.matches(&metadata),
                 "File changed since preview"
@@ -1052,6 +1362,10 @@ fn apply_with_journal(
                 result.allocated_removed = result.allocated_removed.saturating_add(bytes);
             }
             Err(error) => {
+                primary_failed = plan
+                    .app_bundle
+                    .as_ref()
+                    .is_some_and(|b| b.native == entry.native);
                 result.needs_reconcile |= changed;
                 result.blocked.push(Blocked {
                     path: entry.path.clone(),
@@ -1333,6 +1647,26 @@ pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn app_permission_exception_only_accepts_whole_bundles_in_applications() {
+        for path in [
+            "/Applications/Alpha.app",
+            "/Applications/Vendor/Alpha.app",
+            "/System/Volumes/Data/Applications/Alpha.app",
+        ] {
+            assert!(standard_application_path(Path::new(path)));
+        }
+        for path in [
+            "/Applications",
+            "/System/Applications/Alpha.app",
+            "/Applications/Alpha.app/Contents/Helper.app",
+            "/Library/Alpha.app",
+            "/usr/Alpha.app",
+            "/Applications/not-an-app",
+        ] {
+            assert!(!standard_application_path(Path::new(path)));
+        }
+    }
 
     #[test]
     fn every_destructive_claim_gets_a_fresh_process_check() {
