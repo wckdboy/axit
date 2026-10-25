@@ -96,12 +96,12 @@ pub(super) fn tiles(parts: &[Part], area: Rect, out: &mut Vec<(usize, Rect)>, st
 }
 
 const COLORS: [Color; 6] = [
-    Color::Rgb(42, 64, 50),
-    Color::Rgb(32, 52, 62),
-    Color::Rgb(60, 47, 53),
-    Color::Rgb(59, 54, 34),
-    Color::Rgb(36, 61, 52),
-    Color::Rgb(44, 48, 71),
+    Color::Rgb(74, 50, 41),
+    Color::Rgb(40, 57, 69),
+    Color::Rgb(59, 49, 65),
+    Color::Rgb(65, 60, 42),
+    Color::Rgb(43, 61, 56),
+    Color::Rgb(48, 53, 66),
 ];
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App, area: Rect) {

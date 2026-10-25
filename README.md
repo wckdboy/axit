@@ -8,12 +8,13 @@ telemetry, network service or file-content indexing is required.
 
 ![AXIT terminal storage browser, captured with temporary test fixtures](assets/tui.svg)
 
-AXIT's **Lichen** palette uses `#D6F45B` for its identity and navigation, dark green
-ink for surfaces, cool blue for information and coral for destructive actions.
+AXIT's **Copper** palette uses `#D9966B` for its identity and navigation, charcoal
+and graphite surfaces, chalk text, cool blue information and rose destructive actions.
 [View the palette](assets/palette.svg). Runtime colors live in `src/tui/theme.rs`;
 text and action colors have automated contrast checks.
-The pixel axe in the app's top-left corner and website icon shares one 6×6 source
-mask, [assets/axe.txt](assets/axe.txt). Run `python3 scripts/render-logo.py` after
+The pixel axe in the app's top-left corner and website icon shares one 8×8 source
+mask, [assets/axe.txt](assets/axe.txt). The 8×8 silhouette uses one foreground color.
+Run `python3 scripts/render-logo.py` after
 editing it; site checks verify both generated SVGs match.
 
 ## Project status
