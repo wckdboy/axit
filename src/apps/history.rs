@@ -13,11 +13,16 @@ struct Record {
     app: Application,
     time: i64,
 }
+#[derive(Default)]
+struct History {
+    records: Vec<Record>,
+    rejected: Option<Vec<u8>>,
+}
 
-fn load(state: &Path) -> Result<Vec<Record>> {
+fn load(state: &Path) -> Result<History> {
     let file = match fs::File::open(state.join("apps-history.json")) {
         Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(History::default()),
         Err(e) => return Err(e.into()),
     };
     let mut bytes = vec![];
@@ -26,9 +31,23 @@ fn load(state: &Path) -> Result<Vec<Record>> {
         bytes.len() <= MAX_BYTES,
         "App history exceeds its 1 MiB limit"
     );
-    let mut records: Vec<Record> = serde_json::from_slice(&bytes)?;
-    records.truncate(128);
-    Ok(records)
+    let mut records = vec![];
+    let mut rejected = false;
+    match serde_json::from_slice::<Vec<serde_json::Value>>(&bytes) {
+        Ok(values) => {
+            for value in values.into_iter().take(128) {
+                match serde_json::from_value(value) {
+                    Ok(record) => records.push(record),
+                    Err(_) => rejected = true,
+                }
+            }
+        }
+        Err(_) => rejected = true,
+    }
+    Ok(History {
+        records,
+        rejected: rejected.then_some(bytes),
+    })
 }
 
 /// Keep bounded identity/recipe metadata so related data can be found after an uninstall.
@@ -42,7 +61,17 @@ pub fn remember(state: &Path, app: &Application) -> Result<()> {
         .write(true)
         .open(state.join("apps-history.lock"))?;
     fs2::FileExt::try_lock_exclusive(&lock)?;
-    let mut records = load(state)?;
+    let History {
+        mut records,
+        rejected,
+    } = load(state)?;
+    if let Some(bytes) = rejected {
+        // Keep one private, bounded recovery copy before replacing advisory metadata.
+        let mut backup = tempfile::NamedTempFile::new_in(state)?;
+        backup.write_all(&bytes)?;
+        backup.as_file().sync_all()?;
+        backup.persist(state.join("apps-history.unreadable.json"))?;
+    }
     records.retain(|record| record.app.key() != app.key());
     records.insert(
         0,
@@ -75,7 +104,7 @@ pub fn leftovers(context: &Context, catalog: &Catalog, state: &Path) -> Result<V
     let installed: HashSet<_> = catalog.apps.iter().map(|a| a.id.to_lowercase()).collect();
     let mut seen = HashSet::new();
     let mut result = vec![];
-    for record in load(state)? {
+    for record in load(state)?.records {
         let mut app = record.app;
         if installed.contains(&app.id.to_lowercase()) || !seen.insert(app.id.to_lowercase()) {
             continue;

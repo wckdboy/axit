@@ -140,7 +140,7 @@ fn brew_hints_do_not_enable_globs_or_parent_traversal_and_flatpak_refs_are_preci
     assert_eq!(apps.len(), 2);
     assert!(matches!(
         &apps[0].source,
-        Source::Flatpak { user: true, .. }
+        Source::Flatpak { user: true, reference } if reference=="app/org.wckd.Alpha/x86_64/stable"
     ));
     assert!(matches!(
         &apps[1].source,
@@ -365,4 +365,32 @@ fn multi_bundle_casks_have_unique_selection_keys_and_ambiguous_tokens_require_a_
         .id,
         b.id
     );
+}
+
+#[test]
+fn malformed_advisory_history_is_recoverable_and_keeps_one_private_backup() {
+    use std::os::unix::fs::MetadataExt;
+    let (temp, ctx) = fixture();
+    let path = ctx.app_roots[0].join("Alpha.app");
+    bundle(&path, "org.wckd.Alpha", false);
+    let app = read_bundle(&path).unwrap();
+    let state = temp.path().join("state");
+    fs::create_dir(&state).unwrap();
+    let file = state.join("apps-history.json");
+    fs::write(&file, b"{truncated").unwrap();
+    assert!(leftovers(&ctx, &inventory(&ctx), &state).is_ok());
+    remember(&state, &app).unwrap();
+    let backup = state.join("apps-history.unreadable.json");
+    assert_eq!(fs::read(&backup).unwrap(), b"{truncated");
+    assert_eq!(fs::metadata(&backup).unwrap().mode() & 0o077, 0);
+    let mut records: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    let mut future = records[0].clone();
+    future["app"]["source"] = serde_json::json!({"kind":"future_provider"});
+    records.as_array_mut().unwrap().push(future);
+    let damaged = serde_json::to_vec(&records).unwrap();
+    fs::write(&file, &damaged).unwrap();
+    remember(&state, &app).unwrap();
+    assert_eq!(fs::read(&backup).unwrap(), damaged);
+    let valid: serde_json::Value = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+    assert_eq!(valid.as_array().unwrap().len(), 1);
 }

@@ -179,7 +179,8 @@ CLI execution needs `--confirm INSTALL` / `UNINSTALL` for native operations, or
 `--confirm TRASH` for standalone/data Trash. Without these flags, commands only preview.
 
 Data candidates combine bounded identity history with exact identifiers in known
-home folders. Unmatched folders may belong to services or shared software; nothing is
+home folders. Malformed history is recoverable; the next write keeps one private
+`apps-history.unreadable.json` backup. Unmatched folders may belong to services or shared software; nothing is
 selected automatically for them. `--include-data` and `--include-review` are separate
 CLI choices. Shared identifiers keep data protected. Native Linux distribution
 packages and arbitrary installer scripts are not uninstalled by Axit; their desktop
@@ -288,7 +289,8 @@ Example MCP client configuration:
 ```
 
 Tools: `axit_status`, `axit_scan`, `axit_search`, `axit_browse`, `axit_cleanup_plan`,
-`axit_move_plan` and `axit_trash_plan`. Scans run in the background; poll status.
+`axit_move_plan`, `axit_trash_plan`, `axit_apps`, `axit_app_files` and
+`axit_app_data_plan`. Scans run in the background; poll status.
 The launch scope is fixed. Mutations are disabled and unadvertised by default.
 Explicit `--allow-mutations` adds annotated apply/undo tools; clients must obtain
 user approval for destructive calls. Plans still require exact confirmation and live
@@ -310,7 +312,8 @@ axit acp --root "$HOME"
 ```
 
 This Agent Client Protocol v1 adapter exposes deterministic metadata commands:
-`/search QUERY`, `/largest`, `/status`, `/scan` and `/plan ID…`. Sessions are scoped to
+`/search QUERY`, `/largest`, `/status`, `/scan`, `/apps [QUERY]`, `/app KEY` and
+`/plan ID…`. Sessions are scoped to
 their working directory within the server's launch scope. Results stream as agent
 message chunks. No language model runs inside AXIT. File execution stays in the TUI
 or explicitly enabled MCP tools. External MCP servers and conversation history are

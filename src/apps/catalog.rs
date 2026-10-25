@@ -262,6 +262,9 @@ pub fn inventory(context: &Context) -> Catalog {
             for entry in entries.take(remaining).flatten() {
                 remaining = remaining.saturating_sub(1);
                 if catalog.apps.len() >= MAX_APPS || started.elapsed() > Duration::from_secs(10) {
+                    if catalog.warnings.len() < 64 {
+                        catalog.warnings.push("Application inventory limit reached; some apps or launchers are omitted".into());
+                    }
                     break;
                 }
                 let path = entry.path();
@@ -311,6 +314,12 @@ pub fn inventory(context: &Context) -> Catalog {
         for entry in entries.take(remaining.min(MAX_APPS)).flatten() {
             remaining = remaining.saturating_sub(1);
             if catalog.apps.len() >= MAX_APPS || started.elapsed() > Duration::from_secs(10) {
+                if catalog.warnings.len() < 64 {
+                    catalog.warnings.push(
+                        "Application inventory limit reached; some apps or launchers are omitted"
+                            .into(),
+                    );
+                }
                 break;
             }
             let path = entry.path();
@@ -325,6 +334,11 @@ pub fn inventory(context: &Context) -> Catalog {
                 catalog.apps.push(app);
             }
         }
+    }
+    if remaining == 0 && catalog.warnings.len() < 64 {
+        catalog
+            .warnings
+            .push("Application entry budget reached; inventory may be incomplete".into());
     }
     super::managed::enrich(context, &mut catalog);
     catalog

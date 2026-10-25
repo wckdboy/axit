@@ -283,7 +283,7 @@ pub(super) fn parse_flatpak(text: &str) -> Vec<Application> {
             } else {
                 format!("app/{}", parts.first()?)
             };
-            if parts.len() < 3
+            if parts.len() != 3
                 || !valid_flatpak_ref(&reference)
                 || !matches!(parts[2], "user" | "system")
             {
