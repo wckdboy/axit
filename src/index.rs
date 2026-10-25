@@ -16,6 +16,11 @@ use std::{
     },
 };
 
+mod delta;
+mod refresh;
+mod walk;
+pub use refresh::{RefreshReport, refresh, refresh_paths, refresh_scoped};
+
 const HEADER: usize = 64;
 const RECORD: usize = 64;
 const MAGIC: &[u8; 8] = b"SCRYIDX1";
@@ -34,7 +39,7 @@ pub struct Progress {
     pub message: String,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Entry {
     pub id: u32,
     pub parent: u32,
@@ -55,6 +60,21 @@ impl Entry {
     }
     pub fn is_link(self) -> bool {
         self.flags & LINK != 0
+    }
+    fn decode(id: u32, b: &[u8]) -> Self {
+        Self {
+            id,
+            parent: u32_at(b, 0),
+            flags: u32_at(b, 4),
+            name_offset: u64_at(b, 8),
+            name_len: u32_at(b, 16),
+            uid: u32_at(b, 20),
+            logical: u64_at(b, 24),
+            allocated: u64_at(b, 32),
+            modified: u64_at(b, 40) as i64,
+            device: u64_at(b, 48),
+            inode: u64_at(b, 56),
+        }
     }
     fn encode(self) -> [u8; RECORD] {
         let mut b = [0; RECORD];
@@ -90,17 +110,41 @@ fn u64_at(b: &[u8], i: usize) -> u64 {
 
 pub struct Index {
     map: Mmap,
+    /// Exclusive entry-ID bound. Deleted incremental records leave holes.
     pub count: u32,
     pub started: i64,
     pub finished: i64,
     pub errors: u64,
     stamp: [u64; 5],
     names_start: usize,
+    base_count: u32,
+    live_count: u32,
+    delta: Option<delta::Delta>,
     pub(crate) cache_candidates: OnceLock<Vec<u32>>,
 }
 
 impl Index {
+    /// Recover the established scan scope even if its incremental sidecar is damaged.
+    pub fn base_root(path: &Path) -> Result<PathBuf> {
+        Self::open_base(path)?.path(0)
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
+        // A full scan may replace the base while we open its sidecar. Retry
+        // rather than combining metadata from two different publications.
+        for _ in 0..4 {
+            let base = Self::open_base(path)?;
+            let stamp = base.stamp;
+            let opened = delta::attach(base, &path.with_extension("delta"));
+            let current = fs::metadata(path)?;
+            if delta::file_stamp(&current) == stamp {
+                return opened;
+            }
+        }
+        anyhow::bail!("Index changed while opening; retry the request")
+    }
+
+    fn open_base(path: &Path) -> Result<Self> {
         let file = File::open(path)
             .context("No index yet. Run axit scan, or start the TUI to create one")?;
         // AXIT writes immutable generations and publishes them with an atomic rename.
@@ -108,7 +152,7 @@ impl Index {
         let map = unsafe { MmapOptions::new().map(&file)? };
         let metadata = file.metadata()?;
         ensure!(
-            map.len() >= HEADER && &map[..8] == MAGIC,
+            (HEADER..=1024 * 1024 * 1024 + HEADER).contains(&map.len()) && &map[..8] == MAGIC,
             "Invalid AXIT index header"
         );
         ensure!(
@@ -131,6 +175,9 @@ impl Index {
         let index = Self {
             cache_candidates: OnceLock::new(),
             count: count as u32,
+            base_count: count as u32,
+            live_count: count as u32,
+            delta: None,
             started: u64_at(&map, 32) as i64,
             finished: u64_at(&map, 40) as i64,
             errors: u64_at(&map, 48),
@@ -173,35 +220,56 @@ impl Index {
     }
 
     pub fn disk_bytes(&self) -> u64 {
-        self.map.len() as u64
+        self.map.len() as u64 + self.delta.as_ref().map_or(0, |d| d.disk_bytes())
+    }
+
+    /// Number of visible records, excluding incremental tombstones.
+    pub fn live_count(&self) -> u32 {
+        self.live_count
+    }
+
+    pub fn last_refresh(&self) -> Option<i64> {
+        self.delta.as_ref().map(|d| d.finished)
     }
 
     pub fn stamp(&self) -> [u64; 5] {
-        self.stamp
+        self.delta
+            .as_ref()
+            .map_or(self.stamp, |d| d.generation(self.stamp))
     }
 
     pub fn entry(&self, id: u32) -> Option<Entry> {
-        if id >= self.count {
+        if let Some(delta) = &self.delta
+            && delta.changed(id)
+        {
+            return delta.entry(id);
+        }
+        self.base_entry(id)
+    }
+
+    fn base_entry(&self, id: u32) -> Option<Entry> {
+        if id >= self.base_count {
             return None;
         }
         let start = HEADER + id as usize * RECORD;
         let b = &self.map[start..start + RECORD];
-        Some(Entry {
-            id,
-            parent: u32_at(b, 0),
-            flags: u32_at(b, 4),
-            name_offset: u64_at(b, 8),
-            name_len: u32_at(b, 16),
-            uid: u32_at(b, 20),
-            logical: u64_at(b, 24),
-            allocated: u64_at(b, 32),
-            modified: u64_at(b, 40) as i64,
-            device: u64_at(b, 48),
-            inode: u64_at(b, 56),
-        })
+        Some(Entry::decode(id, b))
     }
 
     pub fn name(&self, entry: Entry) -> &[u8] {
+        if let Some(delta) = &self.delta
+            && entry.name_offset >= self.base_names_len()
+        {
+            return delta.name(entry, self.base_names_len());
+        }
+        self.base_name(entry)
+    }
+
+    fn base_names_len(&self) -> u64 {
+        (self.map.len() - self.names_start) as u64
+    }
+
+    fn base_name(&self, entry: Entry) -> &[u8] {
         let p = self.names_start + entry.name_offset as usize;
         &self.map[p..p + entry.name_len as usize]
     }
@@ -584,21 +652,62 @@ pub fn scan(
     destination.get_ref().sync_all()?;
     fs::set_permissions(&output, fs::Permissions::from_mode(0o600))?;
     Index::open(&output).context("New index validation failed; previous index preserved")?;
+    ensure!(
+        !cancel.load(Ordering::Relaxed),
+        "Scan canceled; previous index preserved"
+    );
     let target = crate::index_path(&state);
+    let directory = File::open(&state)?;
+    directory.sync_all()?;
+    ensure!(
+        !cancel.load(Ordering::Relaxed),
+        "Scan canceled; previous index preserved"
+    );
     fs::rename(&output, &target)?;
+    // The old delta remains useful to readers of the old base. Retire its
+    // directory entry only after the new base rename is durable; otherwise a
+    // crash could resurrect the old base without its latest updates.
+    let mut warnings = vec![];
+    match directory.sync_all() {
+        Ok(()) => {
+            if let Err(error) = fs::remove_file(target.with_extension("delta"))
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                warnings.push(format!(
+                    "Could not retire the old incremental index: {error}"
+                ));
+            }
+            if let Err(error) = directory.sync_all() {
+                warnings.push(format!(
+                    "Could not confirm incremental-index retirement: {error}"
+                ));
+            }
+        }
+        Err(error) => warnings.push(format!(
+            "Index published, but directory durability was not confirmed: {error}"
+        )),
+    }
     let error_report = serde_json::json!({"started":started,"finished":crate::unix_now(),"entries":scanner.count,"allocated_bytes":total,
         "restricted_or_missing":scanner.error_count,"errors":scanner.errors,"omitted_error_details":scanner.error_count.saturating_sub(scanner.errors.len() as u64),
         "notes":["Symlinks are not followed","Other mounted filesystems are excluded","Hardlinks counted once","APFS clones may share blocks; allocated sizes are not guaranteed reclaimable bytes"]});
-    fs::write(
+    if let Err(error) = fs::write(
         state.join("latest-scan.json"),
         serde_json::to_vec_pretty(&error_report)?,
-    )?;
+    ) {
+        warnings.push(format!(
+            "Index published, but the coverage report could not be saved: {error}"
+        ));
+    }
     if let Ok(mut p) = progress.lock() {
         p.entries = scanner.count as u64;
         p.errors = scanner.error_count;
         p.allocated = total;
         p.done = true;
-        p.message = "Scan complete".into();
+        p.message = if warnings.is_empty() {
+            "Scan complete".into()
+        } else {
+            format!("Scan complete · {}", warnings.join("; "))
+        };
     }
     Ok(target)
 }

@@ -90,7 +90,7 @@ with tempfile.TemporaryDirectory(prefix='axit-protocol-') as temporary:
     check(init['result']['protocolVersion'] == '2025-11-25', 'Wrong MCP version')
     mcp.send({'jsonrpc': '2.0', 'method': 'notifications/initialized'})
     tools = mcp.request('tools/list')['result']['tools']
-    check(len(tools) == 10, 'Unexpected read-only tool surface')
+    check(len(tools) == 12, 'Unexpected read-only tool surface')
     check(all(t['annotations']['readOnlyHint'] for t in tools), 'Read-only tools mislabelled')
     check(all(t['name'].startswith('axit_') for t in tools), 'Old brand still advertised')
     check(not mcp.tool('scry_status')['isError'], 'Legacy MCP status alias failed')
@@ -302,6 +302,121 @@ with tempfile.TemporaryDirectory(prefix='axit-pages-') as temporary:
     check(mcp.tool('axit_search', {'query': 'ext:txt'})['structuredContent']['matched'] == 10182, 'Cannot restart after publication')
     cli('search', 'ext:txt', '--json', '--cursor', token, ok=False)
     mcp.close()
+
+
+# Explicit index refresh has a separate lifecycle from request/search cancellation.
+with tempfile.TemporaryDirectory(prefix='axit-refresh-protocol-') as temporary:
+    base = Path(temporary).resolve()
+    root, state = base/'files', base/'state'
+    for folder in ['left', 'right', 'with spaces']:
+        (root/folder).mkdir(parents=True)
+    for name in ['left/old.txt', 'left/keep.txt', 'right/private.txt', 'with spaces/item.txt']:
+        (root/name).write_text('fixture')
+    args = ['--root', str(root), '--state-dir', str(state)]
+    subprocess.run([BINARY, *args, 'scan'], capture_output=True, check=True)
+    original_base = (state/'disk.idx').read_bytes()
+    mcp = Client([*args, 'mcp'])
+    mcp.request('initialize', {'protocolVersion':'2025-11-25'})
+
+    def completed(client, status):
+        deadline = time.monotonic()+15
+        while time.monotonic() < deadline:
+            value = status()
+            if not value['scanning']:
+                check(value['progress']['done'], 'Background operation did not finish its progress')
+                return value
+            time.sleep(.01)
+        raise AssertionError('Index job did not finish')
+
+    def tool_status(): return mcp.tool('axit_status')['structuredContent']
+    check(mcp.tool('axit_cancel_index')['structuredContent']['status']=='idle', 'Cancel without job failed')
+    for invalid in [None, {}, [], [''], [1], ['../right'], [str(base/'outside')], ['left']*65, ['x'*4097], ['x'*4096]*17, ['bad\0path']]:
+        check(mcp.tool('axit_refresh', {'paths':invalid})['isError'], ('Accepted invalid refresh paths', invalid))
+    check(mcp.tool('axit_refresh', {'paths':['left'], 'root':str(base)})['isError'], 'Refresh scope can be overridden')
+    token = mcp.tool('axit_search', {'query':'ext:txt', 'limit':1})['structuredContent']['page']['next_cursor']
+    (root/'left/old.txt').unlink()
+    (root/'left/new.txt').write_text('new')
+    (root/'right/not-yet-indexed.txt').write_text('outside this refresh')
+    result = mcp.tool('axit_refresh', {'paths':['left']})
+    check(not result['isError'] and result['structuredContent']['operation']=='refresh', result)
+    status = completed(mcp, tool_status)
+    report = status['index_job']['report']
+    check(status['index_job']['error'] is None and report['published'], status)
+    check(report['added']==1 and report['removed']==1 and report['scopes']==[str(root/'left')], report)
+    check(status['last_full_scan_unix'] is not None and status['last_refresh_unix'] is not None, 'Freshness fields missing')
+    check((state/'disk.idx').read_bytes()==original_base, 'Refresh rewrote the base')
+    check(mcp.tool('axit_search', {'query':'not-yet-indexed'})['structuredContent']['matched']==0, 'Refresh widened its paths')
+    check(mcp.tool('axit_search', {'query':'new.txt'})['structuredContent']['matched']==1, 'New file not published')
+    check(mcp.tool('axit_search', {'query':'ext:txt','cursor':token})['isError'], 'Pre-refresh cursor accepted')
+    snapshot = (state/'disk.delta').read_bytes()
+    mcp.tool('scry_refresh', {'paths':['left']})
+    status = completed(mcp, tool_status)
+    check(not status['index_job']['report']['published'] and (state/'disk.delta').read_bytes()==snapshot, 'No-op republished')
+    import fcntl
+    with open(state/'scan.lock', 'r+') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        mcp.tool('axit_refresh', {'paths':['right']})
+        status = completed(mcp, tool_status)
+        check(status['index_job']['error'] is not None, 'Concurrent publisher bypassed the lock')
+    check((state/'disk.delta').read_bytes()==snapshot, 'Failed job changed the sidecar')
+    check(mcp.tool('axit_search', {'query':'new.txt'})['structuredContent']['matched']==1, 'Failure invalidated the reader')
+    bulk = root/'left/bulk'
+    bulk.mkdir()
+    for n in range(4000): (bulk/f'bulk-file-{n:04}.txt').touch()
+    mcp.tool('axit_refresh', {'paths':['left/bulk']})
+    cancelled = mcp.tool('axit_cancel_index')['structuredContent']['status']
+    check(cancelled in ['idle','cancellation_requested'], 'Cancellation was not acknowledged')
+    status = completed(mcp, tool_status)
+    total = mcp.tool('axit_search', {'query':'bulk-file'})['structuredContent']['matched']
+    check(total in [0,4000], 'Cancellation exposed a partial subtree')
+    if status['index_job']['error']:
+        check('canceled' in status['index_job']['error'].lower(), status)
+    check((state/'disk.idx').read_bytes()==original_base, 'Cancellation or refresh rewrote the base')
+    # Explicitly finish reconciliation before checking session-owned work.
+    mcp.tool('axit_refresh', {'paths':['left/bulk']})
+    status = completed(mcp, tool_status)
+    check(status['index_job']['error'] is None, status)
+    mcp.close()
+
+    acp = Client([*args, 'acp'])
+    acp.request('initialize', {'protocolVersion':1})
+    first = acp.request('session/new', {'cwd':str(root/'left'), 'mcpServers':[]})['result']['sessionId']
+    other = acp.request('session/new', {'cwd':str(root/'right'), 'mcpServers':[]})['result']['sessionId']
+    def prompt(session, text, ok=True):
+        response = acp.request('session/prompt', {'sessionId':session, 'prompt':[{'type':'text','text':text}]})
+        check(('result' in response)==ok, response)
+        if not ok: return
+        chunks = [n for n in acp.notifications if n.get('params',{}).get('sessionId')==session and n.get('params',{}).get('update',{}).get('sessionUpdate')=='agent_message_chunk']
+        return json.loads(chunks[-1]['params']['update']['content']['text'])
+    (root/'left/added by session.txt').write_text('scoped')
+    check(prompt(first, '/refresh')['operation']=='refresh', 'ACP refresh did not start')
+    status = completed(acp, lambda:prompt(first, '/status'))
+    check(status['index_job']['error'] is None and status['index_job']['report']['scopes']==[str(root/'left')], status)
+    check(prompt(first, '/search added')['matched']==1, 'ACP scoped publication missing')
+    foreign = prompt(other, '/status')
+    check(not foreign['index_job']['owned'] and 'report' not in foreign['index_job'] and foreign['progress'] is None, 'Another session exposed index-job paths')
+    (bulk/'owner-change.txt').write_text('owner')
+    prompt(first, '/refresh bulk')
+    response = acp.request('session/prompt', {'sessionId':other, 'prompt':[{'type':'text','text':'/cancel-index'}]})
+    if 'error' in response: check('another session' in response['error']['message'], response)
+    owner = completed(acp, lambda:prompt(first, '/status'))
+    check(owner['index_job']['error'] is None and owner['index_job']['report']['published'], 'Another session canceled the owner job')
+    check(prompt(first, '/search owner-change')['matched']==1, 'Owned refresh was not published')
+    prompt(first, '/refresh ../right', ok=False)
+    prompt(first, '/refresh '+str(root/'right'), ok=False)
+    check(prompt(first, '/cancel-index')['status']=='idle', 'ACP cancel idle failed')
+    # A newly created deep session must not refresh its unindexed parent/siblings.
+    nested = root/'unindexed/session'
+    nested.mkdir(parents=True)
+    (root/'unindexed/private.txt').write_text('sibling')
+    session = acp.request('session/new', {'cwd':str(nested), 'mcpServers':[]})['result']['sessionId']
+    prompt(session, '/refresh')
+    status = completed(acp, lambda:prompt(session, '/status'))
+    check('outside this scope' in status['index_job']['error'], status)
+    whole = acp.request('session/new', {'cwd':str(root), 'mcpServers':[]})['result']['sessionId']
+    exposed = prompt(whole, '/search private.txt')
+    check(exposed['matched']==1 and [e['path'] for e in exposed['entries']]==[str(root/'right/private.txt')], 'Failed session refresh exposed an unindexed sibling')
+    acp.close()
 
 print(f'Protocol checks passed: {checks} · MCP read-only/write gates + ACP scoped sessions + framing + cursor pagination')
 

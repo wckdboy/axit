@@ -32,6 +32,9 @@
         <article><p class="step">03 / axit</p><h3>You get the last word.</h3><p>Clear confirmation, with Cancel selected first. Review Trash, moves and verified cache cleanup. Undo reversible moves. Automatic cleanup starts off.</p></article>
       </div>
     </section>
+    <section id="refresh"><div class="split"><div><p class="label">keep your place</p><h2>Update a folder.<br>Keep moving.</h2><p>Refresh selected paths without rebuilding the base index. Browse while it runs, cancel when needed, and keep your focus when the new snapshot arrives. In the terminal: <code>r</code> updates a folder; <code>R</code> runs a full scan.</p><p>Updates are explicit and bounded. Automatic filesystem watching is still in development.</p><p><a href="https://github.com/wckdboy/axit#incremental-refresh">Refresh controls &amp; limits →</a></p></div><pre><code>axit refresh projects/my-app
+axit refresh downloads/old-file.zip
+axit scan</code></pre></div></section>
     <section id="applications"><div class="split"><div><p class="label">apps, without the leftovers</p><h2>Make room.<br>Keep what matters.</h2><p>A dedicated Apps view reviews application bundles and their related files. Personal data stays unchecked. Homebrew and Flatpak handle managed installation and removal with their own prompts.</p><p><a href="https://github.com/wckdboy/axit#applications">Application controls &amp; boundaries →</a></p></div><pre><code>axit apps
 axit apps list --json
 axit apps inspect 'Application Name'
@@ -41,7 +44,7 @@ axit apps leftovers --json</code></pre></div></section>
       <p class="install-note">Then run <code>axit</code>. The installer checks SHA-256 and installs to <code>~/.local/bin</code>. It preserves preferences and does not scan or delete user files.</p>
       <p><a href="https://github.com/wckdboy/axit/releases/latest">Choose a platform download →</a> · <a href="https://github.com/wckdboy/axit#install">Build from source →</a></p>
     </section>
-    <section id="agents"><div class="split"><div><p class="label">agent friendly</p><h2>Your tools<br>can find things, too.</h2><p>MCP exposes scoped search, browsing and plans. Mutations are disabled by default. The ACP adapter supports deterministic metadata commands without running a language model.</p><p><a href="https://github.com/wckdboy/axit#mcp">MCP setup →</a> · <a href="https://github.com/wckdboy/axit#acp">ACP setup →</a></p></div><pre><code>axit
+    <section id="agents"><div class="split"><div><p class="label">agent friendly</p><h2>Your tools<br>can find things, too.</h2><p>MCP exposes scoped search, browsing, refresh and plans. Background index jobs report progress and support cancellation. Mutations are disabled by default. The ACP adapter supports deterministic metadata commands without running a language model.</p><p><a href="https://github.com/wckdboy/axit#mcp">MCP setup →</a> · <a href="https://github.com/wckdboy/axit#acp">ACP setup →</a></p></div><pre><code>axit
 axit search 'ext:pdf size:&gt;100mb'
 axit browse
 axit mcp --root "$HOME"

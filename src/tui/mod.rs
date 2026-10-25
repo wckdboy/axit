@@ -1,5 +1,6 @@
 mod applications;
 mod editor;
+mod index_jobs;
 mod logo;
 mod navigation;
 mod pages;
@@ -73,6 +74,8 @@ enum Command {
     Clean,
     Undo,
     Rescan,
+    Refresh,
+    CancelIndex,
     Auto,
     Help,
     Quit,
@@ -159,6 +162,7 @@ enum Message {
     Apps(u64, applications::Loaded),
     AppFiles(u64, applications::Files),
     Scan(Result<PathBuf, String>),
+    Refreshed(Result<crate::index::RefreshReport, String>),
     Search(u64, Result<query::SearchResult, String>),
     Listing(
         u64,
@@ -229,6 +233,8 @@ pub struct App {
     tx: Sender<Message>,
     rx: Receiver<Message>,
     scan: Option<thread::JoinHandle<()>>,
+    index_error: Option<String>,
+    refreshing: bool,
     busy: bool,
     applying: bool,
     quit_after_operation: bool,
@@ -263,7 +269,14 @@ impl App {
         context: Option<crate::apps::Context>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
-        let index = Index::open(&crate::index_path(&state))
+        let stored = crate::index_path(&state);
+        let opened = Index::open(&stored);
+        let index_error = opened
+            .as_ref()
+            .err()
+            .filter(|_| stored.symlink_metadata().is_ok())
+            .map(|error| format!("Index unavailable · r Scan to repair · {error:#}"));
+        let index = opened
             .ok()
             .filter(|i| i.path(0).is_ok_and(|p| p == root))
             .map(Arc::new);
@@ -315,6 +328,8 @@ impl App {
             tx,
             rx,
             scan: None,
+            index_error,
+            refreshing: false,
             busy: false,
             applying: false,
             quit_after_operation: false,
@@ -334,6 +349,9 @@ impl App {
         app.load_overlay();
         app.load_coverage();
         app.refresh(None, 0);
+        if let Some(error) = &app.index_error {
+            app.status = error.clone();
+        }
         app
     }
 
@@ -519,35 +537,6 @@ impl App {
         self.search();
     }
 
-    fn scan(&mut self) {
-        if self.scan.is_some() {
-            self.status = "A scan is already running".into();
-            return;
-        }
-        if self.applying || self.auto_busy {
-            self.status = "Finish the file operation before rescanning".into();
-            return;
-        }
-        self.cancel_plan();
-        self.cancel.store(false, Ordering::Relaxed);
-        if let Ok(mut p) = self.progress.lock() {
-            *p = Progress::default();
-        }
-        let (root, state, progress, cancel, tx) = (
-            self.root.clone(),
-            self.state.clone(),
-            self.progress.clone(),
-            self.cancel.clone(),
-            self.tx.clone(),
-        );
-        self.status = "Scanning in the background · browsing stays available".into();
-        self.scan = Some(thread::spawn(move || {
-            let result =
-                crate::index::scan(&root, &state, progress, cancel).map_err(|e| format!("{e:#}"));
-            let _ = tx.send(Message::Scan(result));
-        }));
-    }
-
     fn preview(&mut self, action: Action) {
         if !self.mutable() {
             self.status = if self.searching || self.scan.is_some() {
@@ -613,44 +602,13 @@ impl App {
                     }
                     self.start_listing();
                 }
-                Message::Scan(result) => {
-                    if let Some(handle) = self.scan.take() {
-                        let _ = handle.join();
+                Message::Scan(result) => self.finish_index(result, None),
+                Message::Refreshed(result) => match result {
+                    Ok(report) => {
+                        self.finish_index(Ok(crate::index_path(&self.state)), Some(report))
                     }
-                    match result
-                        .and_then(|p| Index::open(&p).map(Arc::new).map_err(|e| e.to_string()))
-                    {
-                        Ok(index) => {
-                            let location = self.location();
-                            self.index = Some(index);
-                            self.hidden.clear();
-                            self.invalidate_rows();
-                            self.needs_rescan = false;
-                            self.save_overlay();
-                            self.cancel_plan();
-                            if matches!(
-                                self.modal,
-                                Some(Modal::Preview(..) | Modal::Destination(_) | Modal::Menu(_))
-                            ) {
-                                self.modal = None;
-                            }
-                            self.load_coverage();
-                            let focus = self.focus;
-                            self.restore_location(location);
-                            self.focus = focus;
-                            let index = self.index.as_ref().unwrap();
-                            self.status = format!(
-                                "Indexed {} entries · {} restricted/missing",
-                                index.count, index.errors
-                            );
-                            self.record(self.status.clone());
-                        }
-                        Err(error) => {
-                            self.status = error;
-                            self.record(self.status.clone());
-                        }
-                    }
-                }
+                    Err(error) => self.finish_index(Err(error), None),
+                },
                 Message::Search(n, result) => {
                     self.search_inflight = false;
                     if n != self.generation.load(Ordering::Relaxed) || self.view != View::Find {
@@ -736,7 +694,7 @@ impl App {
                             self.invalidate_rows();
                             self.save_overlay();
                             self.open_modal(Modal::Notice(format!(
-                                "{error}\n\nSome paths may have changed. Press r to refresh the index."
+                                "{error}\n\nSome paths may have changed. Press R for a full scan."
                             )));
                         }
                     }
@@ -911,7 +869,7 @@ fn run_in(
     }
     execute!(io::stdout(), EnableMouseCapture, EnableBracketedPaste)?;
     if app.index.is_none() && view != View::Apps {
-        app.scan();
+        app.scan_if_missing();
     }
     let result = (|| -> Result<()> {
         let mut dirty = true;

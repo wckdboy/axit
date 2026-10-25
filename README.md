@@ -46,9 +46,24 @@ The PTY harness waits for the complete reviewed file identities before checking 
 terminal frame; its [CI run](https://github.com/wckdboy/axit/actions/runs/40190209154)
 checks the same released application.
 
-Pagination (`AXIT-6`) is shipped. Next: incremental filesystem updates (`AXIT-5`)
-with bounded resource use and missed-event recovery. Native Linux distro ownership
-and removal (`AXIT-18`) remains planned work.
+Pagination (`AXIT-6`) is shipped. Incremental filesystem updates (`AXIT-5`) are
+in progress in [PR #9](https://github.com/wckdboy/axit/pull/9). The reviewed engine
+now has explicit refresh controls in CLI, TUI, MCP and ACP. It reconciles selected
+paths into a bounded immutable sidecar without rewriting the base index. Existing
+readers and live-file IDs survive publication; full scans compact the sidecar.
+These additions are undergoing verification on the feature branch. Native
+FSEvents/inotify watching, bounded event queues and missed-event recovery remain
+follow-up work. No watcher or daemon starts automatically. Native Linux distro
+ownership and removal (`AXIT-18`) remains planned work.
+
+Temporary-fixture regressions cover mutations and type changes, moves, hardlinks,
+raw names, unreadable files/directories, scope and private-state exclusion,
+lock contention, cancellation, corrupt/stale sidecars, full-scan recovery, cursor
+invalidation and old readers. Public-surface tests add protocol argument/session
+boundaries, progress/report and cancellation ownership, TUI focus and stale-overlay
+preservation, keyboard/mouse controls and no-op/failure behavior. A 10,000-file
+fixture verifies that a one-file refresh visits one filesystem object and leaves
+the base bytes unchanged. Source checks use macOS and Linux CI plus CodeRabbit.
 
 ## Install
 
@@ -118,7 +133,8 @@ TUI keys:
   Sorting preserves marks; changing folder or query clears them. `Ctrl-A` marks the
   current window when it fits the 128-item review limit.
 - `Delete` / `t` previews Trash, `m` previews a move, `x` verifies a disposable cache.
-- `u` undoes a reversible move, `a` configures automatic cleanup, `r` rescans.
+- `u` undoes a reversible move, `a` configures automatic cleanup, `r` updates a folder,
+  `R` runs a full scan, and `Ctrl-C` cancels active index work.
 - `s` sorts the current list; `p` shows an item's containing folder; `g` toggles the Space map.
 - `?` opens scrollable help; `q` / `Ctrl-Q` quits. An in-progress file operation
   finishes before exit; canceling a preview never changes files.
@@ -181,6 +197,44 @@ Tokens are opaque and tied to one immutable index generation, filter, scope, sor
 and removed-row overlay. Age filters hold their clock steady while paging. Restart
 from the first window after a new scan or a changed query; stale/mismatched tokens
 are rejected. Tokens are continuation hints, not authentication credentials.
+
+## Incremental refresh
+
+```sh
+axit refresh projects/my-app downloads/old-file.zip
+axit refresh "/absolute/path/inside/the/indexed/root"
+axit scan                   # rebuild and compact the entire established scope
+```
+
+Relative refresh paths use the indexed root, independently of the shell's working
+directory. Choose 1–64 files or folders; deleted names are valid. The JSON report
+lists the actual reconciled scopes, visited/added/removed/updated counts,
+publication, elapsed time, sidecar bytes and any post-publication warning.
+Overlapping paths are coalesced. Recorded metadata is checked again before
+publication so detected changes during traversal preserve the prior snapshot. A missing intermediate directory may widen a
+refresh to the first unindexed ancestor within the permitted scope.
+
+In Space/Clean, `r` updates the current folder; in Find it updates the focused
+item's directory (or the last browsed folder when there is no result). `R` runs a
+full scan. Update/Scan buttons provide the same actions. During index work the
+Cancel button or `Ctrl-C` requests cancellation; browsing remains available.
+Successful updates preserve focus by path and discard obsolete result cursors,
+row caches and file-operation previews. A partial update keeps stale-file markers
+outside its scopes. Remaining uncertainty stays visible until a root refresh or
+full scan. Apps keeps `r` for reloading its application inventory.
+
+Each refresh is capped at 131,072 visited/changed/verified records and a 16 MiB sidecar.
+Budget exhaustion, scope failures and cancellation before publication preserve
+the previous snapshot; choose a narrower scope or run a full scan. No automatic
+full scan follows a failed update. Existing full-scan permission gaps remain
+reported. Already restricted directories with no indexed descendants retain
+that known gap while other paths update. Newly unreadable directories, or access
+failures that would discard known descendants, preserve the prior snapshot;
+use a full scan to record new coverage gaps. `last_refresh_unix` describes a partial metadata publication;
+`last_full_scan_unix` describes the original whole-scope scan, so an update does
+not imply whole-index freshness. Symlinks and other mounted filesystems are not
+followed. A damaged sidecar retains the base root for explicit full-scan repair.
+
 
 ## Applications
 
@@ -326,9 +380,15 @@ Example MCP client configuration:
 }
 ```
 
-Tools: `axit_status`, `axit_scan`, `axit_search`, `axit_browse`, `axit_cleanup_plan`,
+Tools: `axit_status`, `axit_scan`, `axit_refresh`, `axit_cancel_index`,
+`axit_search`, `axit_browse`, `axit_cleanup_plan`,
 `axit_move_plan`, `axit_trash_plan`, `axit_apps`, `axit_app_files` and
-`axit_app_data_plan`. Scans run in the background; poll status.
+`axit_app_data_plan`. Scan/refresh jobs run in the background; poll `axit_status`.
+`axit_refresh` requires `paths` (1–64 strings, relative to the fixed server root or
+absolute within it). `index_job` reports operation, scope, final refresh report,
+error and completion time. `axit_cancel_index` cancels active index work; it is
+separate from individual search-request cancellation. These metadata operations
+are available without enabling file mutations.
 Search and browse accept `cursor` and `sort`; see [result windows](#result-windows).
 The launch scope is fixed. Mutations are disabled and unadvertised by default.
 Explicit `--allow-mutations` adds annotated apply/undo tools; clients must obtain
@@ -352,9 +412,14 @@ axit acp --root "$HOME"
 
 This Agent Client Protocol v1 adapter exposes deterministic metadata commands:
 `/search [--cursor TOKEN] QUERY`, `/largest [--cursor TOKEN]`, `/status`, `/scan`,
+`/refresh [PATH]`, `/cancel-index`,
 `/apps [QUERY]`, `/app KEY` and `/plan ID…`. Page metadata is included in each search
 response. A continuation cannot be reused under a different session folder.
-Sessions are scoped to
+`/refresh` defaults to the session folder; an optional single path is relative to
+that folder and may contain literal spaces. Refresh cannot widen to an unindexed
+ancestor outside the session. `/scan` explicitly rebuilds the fixed server scope.
+`/cancel-index` and `session/cancel` can cancel only that session's index job;
+`/status` hides another session's job paths/report. Sessions are scoped to
 their working directory within the server's launch scope. Results stream as agent
 message chunks. No language model runs inside AXIT. File execution stays in the TUI
 or explicitly enabled MCP tools. External MCP servers and conversation history are
@@ -371,8 +436,10 @@ not advertised or launched by this adapter.
   Each uncached window scans the immutable metadata; deep pages do not grow the heap.
 - A 32-entry generation-aware window cache keeps recent pages and folder revisits
   fast; cache candidate hints are shared for each index. Neither certifies deletion.
-- At most 1 GiB per index; refreshing keeps the previous generation plus up to
-  2 GiB of temporary construction space until publication completes.
+- At most 1 GiB per base index. Full rebuilds keep the previous generation plus up
+  to 2 GiB of temporary construction space until publication completes. Targeted
+  updates keep the base in place and write a sidecar capped at 16 MiB; candidate
+  and prior sidecars coexist until atomic publication.
 - Previous complete index survives cancellation, invalid output or a failed rebuild.
 - Private state directory permissions are `0700`; index and operation records are private.
 

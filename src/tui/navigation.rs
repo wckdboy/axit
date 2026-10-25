@@ -90,7 +90,7 @@ impl App {
             && self.index.is_none()
             && self.scan.is_none()
         {
-            self.scan();
+            self.scan_if_missing();
         }
         self.ui.hits.clear();
     }
@@ -122,7 +122,7 @@ impl App {
                 && self.index.is_none()
                 && self.scan.is_none()
             {
-                self.scan();
+                self.scan_if_missing();
             }
         }
         self.focus = if matches!(view, View::Find | View::Apps) {
@@ -314,7 +314,10 @@ impl App {
             Command::Trash | Command::Move | Command::Clean => self.mutable(),
             Command::Map => self.view == View::Space,
             Command::Undo => !self.busy && !self.auto_busy && self.scan.is_none(),
-            Command::Rescan => self.scan.is_none() && !self.applying && !self.auto_busy,
+            Command::Rescan | Command::Refresh => {
+                self.scan.is_none() && !self.applying && !self.auto_busy
+            }
+            Command::CancelIndex => self.scan.is_some(),
             Command::Auto => self.view == View::Space && !self.busy && !self.auto_busy,
             _ => true,
         }
@@ -427,6 +430,8 @@ impl App {
                 });
             }
             Command::Rescan => self.scan(),
+            Command::Refresh => self.update_folder(),
+            Command::CancelIndex => self.cancel_index(),
             Command::Auto => self.open_modal(Modal::Auto),
             Command::Help => self.open_modal(Modal::Help),
             Command::Quit => return self.quit(),
@@ -549,6 +554,10 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        if ctrl && key.code == KeyCode::Char('c') && self.modal.is_none() && self.scan.is_some() {
+            self.cancel_index();
+            return false;
+        }
         if ctrl && key.code == KeyCode::Char('q') {
             return self.quit();
         }
@@ -772,6 +781,9 @@ impl App {
                 self.command(Command::Help);
             }
             KeyCode::Char('r') => {
+                self.command(Command::Refresh);
+            }
+            KeyCode::Char('R') => {
                 self.command(Command::Rescan);
             }
             KeyCode::Char('a') => {

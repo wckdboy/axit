@@ -4,3 +4,7 @@ html{scroll-behavior:smooth;scroll-padding-top:24px}.masthead__in{align-items:ce
 
 h1::after{content:none}.split>*{min-width:0}.product-art{max-width:100%}
 .brand__mark{background:var(--axit-ink);width:24px;height:24px;align-items:center;justify-content:center}.brand__mark img{display:block;width:24px;height:24px;image-rendering:pixelated}
+
+.install-box pre{min-width:0;max-width:100%}.install-box code{white-space:inherit}
+
+.split pre{align-self:start}
