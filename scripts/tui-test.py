@@ -25,19 +25,21 @@ if screens:
     screens.mkdir(parents=True,exist_ok=True)
 
 class Session:
-    def __init__(self,root,state,recovery,base,executable=None,extra_env=None):
+    def __init__(self,root,state,recovery,base,executable=None,extra_env=None,extra_args=None):
         self.master,self.slave=os.openpty()
         self.resize(140,38,notify=False)
         self.before=subprocess.run(['stty','-g'],stdin=self.slave,capture_output=True,text=True,check=True).stdout.strip()
         self.restore_file=base/'restored-terminal.txt'
         env=dict(os.environ,TERM='xterm-256color',COLORTERM='truecolor',AXIT_TEST_RESTORE=str(self.restore_file),AXIT_TRASH_DIR=str(recovery))
         env.pop('NO_COLOR',None)
-        env.update(extra_env or {})
+        for key,value in (extra_env or {}).items():
+            if value is None:env.pop(key,None)
+            else:env[key]=value
         def terminal_session():
             os.setsid()
             fcntl.ioctl(self.slave,termios.TIOCSCTTY,0)
         wrapper='"$@"\naxit_test_status=$?\nstty -g > "$AXIT_TEST_RESTORE"\nexit "$axit_test_status"\n'
-        args=[executable or binary,'--root',str(root),'--state-dir',str(state)]
+        args=[executable or binary,'--root',str(root),'--state-dir',str(state),*(extra_args or [])]
         self.process=subprocess.Popen(['/bin/sh','-c',wrapper,'axit-ui-test',*args],stdin=self.slave,stdout=self.slave,stderr=self.slave,preexec_fn=terminal_session,close_fds=True,env=env)
         self.screen=pyte.Screen(140,38)
         self.stream=pyte.Stream(self.screen)
@@ -208,6 +210,11 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
     finally:app.close()
     app=Session(root,state,recovery,base)
     try:app.finish(terminate=True)
+    finally:app.close()
+    app=Session(root,state,recovery,base,extra_env={'HOME':None},extra_args=['apps'])
+    try:
+        app.wait(lambda:'Cannot locate application folders' in app.content())
+        app.finish()
     finally:app.close()
 print('PTY checks passed: keyboard editing/paging, SGR mouse clicks/double-clicks, wheel/touchpad input, reviewed Trash, Undo, modal scrolling, resize, Ctrl-Q/SIGTERM and terminal-mode restoration')
 
