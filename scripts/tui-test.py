@@ -134,6 +134,19 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         assert 'AXIT' in app.content() and 'WCKD.ai' in app.content(),app.content()
         assert len({c.fg for row in app.screen.buffer.values() for c in row.values()})>=5,'Theme colors missing'
         app.snapshot('space')
+        base_before = (state/'disk.idx').read_bytes()
+        (root/'documents/refreshed.txt').write_text('new fixture')
+        app.click('documents',left=True,double=True)
+        app.send(b'r')
+        app.wait(lambda:'refreshed.txt' in app.content() and 'Folder updated' in app.content())
+        assert (state/'disk.idx').read_bytes()==base_before, 'TUI folder update rewrote base'
+        assert (state/'disk.delta').exists(), 'TUI folder update did not publish a sidecar'
+        app.click('Scope',left=True)
+        (root/'full-scan-only.txt').write_text('outside updated folder')
+        app.send(b'R')
+        app.wait(lambda:'Indexed ' in app.content() and 'Scanning:' not in app.content())
+        assert not (state/'disk.delta').exists(), 'Full scan did not compact sidecar'
+        assert (state/'disk.idx').read_bytes()!=base_before, 'Full scan did not replace base'
         app.send(b'\x1b[A\x1b[C\x1b[B')  # First row -> navigation -> Find -> query.
         app.wait(lambda:'Search · typing' in app.content())
         app.send(b'file-003')

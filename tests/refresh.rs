@@ -730,3 +730,120 @@ fn damaged_sidecar_recovery_keeps_the_indexed_root_instead_of_falling_back_to_ho
     assert!(current.find_path(&root.join("a/one.txt")).is_some());
     assert!(current.find_path(&home.join("not-in-scope")).is_none());
 }
+
+#[test]
+fn scoped_refresh_rejects_escape_and_unindexed_ancestors_before_publication() {
+    let (_t, root, state) = fixture();
+    scan(&root, &state);
+    let base = wckd_axit::index_path(&state);
+    let before = stamp(&base);
+    let scope = root.join("a");
+    for path in [
+        PathBuf::from("../b"),
+        root.join("b"),
+        PathBuf::new(),
+        PathBuf::from("bad\0name"),
+    ] {
+        assert!(
+            index::refresh_scoped(
+                &root,
+                &state,
+                &[path],
+                &scope,
+                Arc::new(Mutex::new(Progress::default())),
+                Arc::new(AtomicBool::new(false))
+            )
+            .is_err()
+        );
+    }
+    let scope = root.join("new-parent/session");
+    fs::create_dir_all(&scope).unwrap();
+    fs::write(scope.join("visible.txt"), b"visible").unwrap();
+    fs::write(root.join("new-parent/private.txt"), b"private").unwrap();
+    let error = index::refresh_scoped(
+        &root,
+        &state,
+        &[PathBuf::from(".")],
+        &scope,
+        Arc::new(Mutex::new(Progress::default())),
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("outside this scope"));
+    assert_eq!(stamp(&base), before);
+    assert!(!base.with_extension("delta").exists());
+    refresh(&root, &state, &["new-parent"]);
+    fs::write(scope.join("added.txt"), b"added").unwrap();
+    let result = index::refresh_scoped(
+        &root,
+        &state,
+        &[PathBuf::from(".")],
+        &scope,
+        Arc::new(Mutex::new(Progress::default())),
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap();
+    assert_eq!(result.scopes, vec![wckd_axit::text(&scope)]);
+    assert_matches_scan(&root, &state);
+}
+
+#[test]
+fn refresh_path_preflight_is_bounded_and_does_not_follow_links() {
+    let (_t, root, _state) = fixture();
+    assert!(index::refresh_paths(&root, &[]).is_err());
+    assert!(index::refresh_paths(&root, &vec![PathBuf::from("a"); 65]).is_err());
+    assert!(index::refresh_paths(&root, &[PathBuf::from("a".repeat(65537))]).is_err());
+    assert!(index::refresh_paths(Path::new("relative"), &[PathBuf::from("a")]).is_err());
+    symlink(root.parent().unwrap(), root.join("escape")).unwrap();
+    let value = index::refresh_paths(&root, &[PathBuf::from("escape/absent")]).unwrap();
+    assert_eq!(value, vec![root.join("escape/absent")]);
+    assert_eq!(
+        index::refresh_paths(&root, &[PathBuf::from(".")]).unwrap(),
+        vec![root]
+    );
+}
+
+#[test]
+fn cli_refresh_handles_relative_and_absolute_names_with_a_persistent_bounded_sidecar() {
+    let (_t, root, state) = fixture();
+    scan(&root, &state);
+    let base = wckd_axit::index_path(&state);
+    let before = stamp(&base);
+    fs::write(root.join("a/with spaces.txt"), b"new").unwrap();
+    fs::remove_file(root.join("b/keep.txt")).unwrap();
+    let run = |paths: &[PathBuf]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_axit"))
+            .arg("--state-dir")
+            .arg(&state)
+            .arg("refresh")
+            .args(paths)
+            .output()
+            .unwrap()
+    };
+    let output = run(&[PathBuf::from("a"), root.join("b/keep.txt")]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["added"], 1);
+    assert_eq!(result["removed"], 1);
+    assert_eq!(result["published"], true);
+    assert_eq!(stamp(&base), before);
+    assert_matches_scan(&root, &state);
+    let delta = fs::read(base.with_extension("delta")).unwrap();
+    for paths in [
+        vec![],
+        vec![PathBuf::from("../outside")],
+        vec![PathBuf::from("a"); 65],
+    ] {
+        assert!(!run(&paths).status.success());
+        assert_eq!(fs::read(base.with_extension("delta")).unwrap(), delta);
+    }
+    let result = run(&[PathBuf::from("a")]);
+    assert!(result.status.success());
+    let result: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(result["published"], false);
+    assert_eq!(fs::read(base.with_extension("delta")).unwrap(), delta);
+}

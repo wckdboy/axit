@@ -299,7 +299,9 @@ fn uncertain_operation_failures_keep_the_saved_index_marked_stale() {
         app.messages();
         assert!(app.needs_rescan);
         if !automatic {
-            assert!(matches!(&app.modal, Some(Modal::Notice(text)) if text.contains("Press r")));
+            assert!(
+                matches!(&app.modal, Some(Modal::Notice(text)) if text.contains("Press R for a full scan"))
+            );
         }
         let reopened = App::new(app.root.clone(), app.state.clone());
         assert!(reopened.needs_rescan);
@@ -1285,6 +1287,9 @@ fn corrupt_incremental_index_requires_explicit_repair_and_preserves_scan_scope()
     let mut app = App::new(root.clone(), state.clone());
     assert!(app.index.is_none());
     assert!(app.status.contains("Index unavailable"));
+    let screen = render(&mut app, 100, 30);
+    assert!(screen.contains("Index needs repair"));
+    assert!(!screen.contains("Building the first index"));
     app.scan_if_missing();
     plain(&mut app, KeyCode::Char('2'));
     plain(&mut app, KeyCode::Char('3'));
@@ -1297,4 +1302,164 @@ fn corrupt_incremental_index_requires_explicit_repair_and_preserves_scan_scope()
     assert_eq!(app.index.as_ref().unwrap().path(0).unwrap(), root);
     assert!(app.index_error.is_none());
     assert!(!delta.exists());
+}
+
+#[test]
+fn folder_update_preserves_focus_and_unrelated_stale_overlay_then_full_scan_compacts() {
+    let (_temp, mut app) = fixture(4);
+    let outside = id(&app, "file-000.txt");
+    fs::remove_file(app.root.join("file-000.txt")).unwrap();
+    app.hidden.insert(outside);
+    app.needs_rescan = true;
+    app.save_overlay();
+    focus(&mut app, "folder");
+    plain(&mut app, KeyCode::Enter);
+    focus(&mut app, "folder/inside.txt");
+    fs::write(app.root.join("folder/new.txt"), b"new").unwrap();
+    fs::write(app.root.join("outside-new.txt"), b"outside").unwrap();
+    let base = crate::index_path(&app.state);
+    let before = fs::read(&base).unwrap();
+    let previous = app.index.clone().unwrap();
+    let selected_path = app.root.join("folder/inside.txt");
+    plain(&mut app, KeyCode::Char('r'));
+    assert!(app.refreshing && app.scan.is_some());
+    assert!(
+        previous
+            .find_path(&app.root.join("folder/new.txt"))
+            .is_none()
+    );
+    assert!(render(&mut app, 140, 38).contains("Cancel"));
+    settle(&mut app);
+    let index = app.index.as_ref().unwrap();
+    assert_eq!(index.path(app.focused().unwrap()).unwrap(), selected_path);
+    assert!(index.find_path(&app.root.join("folder/new.txt")).is_some());
+    assert!(index.find_path(&app.root.join("outside-new.txt")).is_none());
+    assert!(app.hidden.contains(&outside) && app.needs_rescan);
+    assert_eq!(fs::read(&base).unwrap(), before);
+    let restarted = App::new(app.root.clone(), app.state.clone());
+    assert_eq!(restarted.hidden, app.hidden);
+    assert!(restarted.needs_rescan);
+    key(&mut app, KeyCode::Char('R'), KeyModifiers::SHIFT);
+    settle(&mut app);
+    assert!(app.hidden.is_empty() && !app.needs_rescan);
+    assert!(!base.with_extension("delta").exists());
+    assert!(
+        app.index
+            .as_ref()
+            .unwrap()
+            .find_path(&app.root.join("outside-new.txt"))
+            .is_some()
+    );
+}
+
+#[test]
+fn noop_update_unhides_restored_rows_using_raw_paths_and_keeps_other_stale_rows() {
+    let (_temp, app) = fixture(2);
+    let path = app.root.join("odd\nfolder");
+    fs::create_dir(&path).unwrap();
+    fs::write(path.join("restored.txt"), b"restored").unwrap();
+    let (root, state) = (app.root.clone(), app.state.clone());
+    drop(app);
+    index::scan(
+        &root,
+        &state,
+        Arc::new(Mutex::new(Progress::default())),
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap();
+    let mut app = App::new(root.clone(), state);
+    let restored = id(&app, "odd\nfolder/restored.txt");
+    let outside = id(&app, "file-000.txt");
+    app.hidden.extend([restored, outside]);
+    app.needs_rescan = true;
+    app.folder = id(&app, "odd\nfolder");
+    app.refresh(None, 0);
+    let generation = app.index.as_ref().unwrap().stamp();
+    let revision = app.rows_revision;
+    app.update_folder();
+    settle(&mut app);
+    assert_eq!(app.index.as_ref().unwrap().stamp(), generation);
+    assert_eq!(app.hidden, HashSet::from([outside]));
+    assert!(app.needs_rescan);
+    assert!(app.ids.contains(&restored));
+    assert!(app.rows_revision > revision);
+    assert!(app.status.contains("no metadata changes"));
+}
+
+#[test]
+fn update_failure_and_cancel_controls_leave_the_browsed_snapshot_and_marks_usable() {
+    let (_temp, mut app) = fixture(4);
+    let selected = focus(&mut app, "file-000.txt");
+    app.selected.insert(selected);
+    app.hidden.insert(id(&app, "file-001.txt"));
+    app.needs_rescan = true;
+    let before = app.index.as_ref().unwrap().stamp();
+    let hidden = app.hidden.clone();
+    let lock = fs::File::options()
+        .write(true)
+        .open(app.state.join("scan.lock"))
+        .unwrap();
+    fs2::FileExt::lock_exclusive(&lock).unwrap();
+    app.update_folder();
+    key(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+    assert!(app.cancel.load(Ordering::Relaxed));
+    assert_eq!(app.index.as_ref().unwrap().stamp(), before);
+    settle(&mut app);
+    assert_eq!(app.index.as_ref().unwrap().stamp(), before);
+    assert_eq!(app.hidden, hidden);
+    assert!(app.selected.contains(&selected));
+    assert!(app.needs_rescan);
+    fs2::FileExt::unlock(&lock).unwrap();
+    app.update_folder();
+    render(&mut app, 140, 38);
+    let point = point(&app, Hit::Command(Command::CancelIndex));
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        point,
+        KeyModifiers::NONE,
+    );
+    mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        point,
+        KeyModifiers::NONE,
+    );
+    assert!(app.cancel.load(Ordering::Relaxed));
+    settle(&mut app);
+    assert!(app.index.is_some());
+}
+
+#[test]
+fn refresh_in_find_targets_the_focused_folder_and_preserves_edits_and_query_focus() {
+    let (_temp, mut app) = fixture(3);
+    plain(&mut app, KeyCode::Char('/'));
+    app.handle_event(Event::Paste("inside".into()));
+    settle(&mut app);
+    assert!(app.focused().is_some());
+    fs::write(app.root.join("folder/new.txt"), b"new").unwrap();
+    app.update_folder();
+    app.handle_event(Event::Paste("-typed".into()));
+    settle(&mut app);
+    assert_eq!(app.query.text, "inside-typed");
+    assert_eq!(app.focus, Focus::Query);
+    assert!(
+        app.index
+            .as_ref()
+            .unwrap()
+            .find_path(&app.root.join("folder/new.txt"))
+            .is_some()
+    );
+    assert!(app.modal.is_none());
+}
+
+#[test]
+fn starting_refresh_cancels_pending_file_plans_and_discards_their_late_results() {
+    let (_temp, mut app) = fixture(3);
+    focus(&mut app, "file-000.txt");
+    app.preview(Action::Trash);
+    app.update_folder();
+    settle(&mut app);
+    assert!(!matches!(app.modal, Some(Modal::Preview(_))));
+    assert!(app.root.join("file-000.txt").exists());
 }

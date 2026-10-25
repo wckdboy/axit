@@ -1,5 +1,6 @@
 mod applications;
 mod editor;
+mod index_jobs;
 mod logo;
 mod navigation;
 mod pages;
@@ -73,6 +74,8 @@ enum Command {
     Clean,
     Undo,
     Rescan,
+    Refresh,
+    CancelIndex,
     Auto,
     Help,
     Quit,
@@ -159,6 +162,7 @@ enum Message {
     Apps(u64, applications::Loaded),
     AppFiles(u64, applications::Files),
     Scan(Result<PathBuf, String>),
+    Refreshed(Result<crate::index::RefreshReport, String>),
     Search(u64, Result<query::SearchResult, String>),
     Listing(
         u64,
@@ -230,6 +234,7 @@ pub struct App {
     rx: Receiver<Message>,
     scan: Option<thread::JoinHandle<()>>,
     index_error: Option<String>,
+    refreshing: bool,
     busy: bool,
     applying: bool,
     quit_after_operation: bool,
@@ -324,6 +329,7 @@ impl App {
             rx,
             scan: None,
             index_error,
+            refreshing: false,
             busy: false,
             applying: false,
             quit_after_operation: false,
@@ -531,45 +537,6 @@ impl App {
         self.search();
     }
 
-    fn scan_if_missing(&mut self) {
-        if self.index.is_none() && self.scan.is_none() {
-            if let Some(error) = &self.index_error {
-                self.status = error.clone();
-            } else {
-                self.scan();
-            }
-        }
-    }
-
-    fn scan(&mut self) {
-        if self.scan.is_some() {
-            self.status = "A scan is already running".into();
-            return;
-        }
-        if self.applying || self.auto_busy {
-            self.status = "Finish the file operation before rescanning".into();
-            return;
-        }
-        self.cancel_plan();
-        self.cancel.store(false, Ordering::Relaxed);
-        if let Ok(mut p) = self.progress.lock() {
-            *p = Progress::default();
-        }
-        let (root, state, progress, cancel, tx) = (
-            self.root.clone(),
-            self.state.clone(),
-            self.progress.clone(),
-            self.cancel.clone(),
-            self.tx.clone(),
-        );
-        self.status = "Scanning in the background · browsing stays available".into();
-        self.scan = Some(thread::spawn(move || {
-            let result =
-                crate::index::scan(&root, &state, progress, cancel).map_err(|e| format!("{e:#}"));
-            let _ = tx.send(Message::Scan(result));
-        }));
-    }
-
     fn preview(&mut self, action: Action) {
         if !self.mutable() {
             self.status = if self.searching || self.scan.is_some() {
@@ -635,52 +602,13 @@ impl App {
                     }
                     self.start_listing();
                 }
-                Message::Scan(result) => {
-                    if let Some(handle) = self.scan.take() {
-                        let _ = handle.join();
+                Message::Scan(result) => self.finish_index(result, None),
+                Message::Refreshed(result) => match result {
+                    Ok(report) => {
+                        self.finish_index(Ok(crate::index_path(&self.state)), Some(report))
                     }
-                    match result
-                        .and_then(|p| Index::open(&p).map(Arc::new).map_err(|e| e.to_string()))
-                    {
-                        Ok(index) => {
-                            let location = self.location();
-                            self.index = Some(index);
-                            self.index_error = None;
-                            self.hidden.clear();
-                            self.invalidate_rows();
-                            self.needs_rescan = false;
-                            self.save_overlay();
-                            self.cancel_plan();
-                            if matches!(
-                                self.modal,
-                                Some(Modal::Preview(..) | Modal::Destination(_) | Modal::Menu(_))
-                            ) {
-                                self.modal = None;
-                            }
-                            self.load_coverage();
-                            let focus = self.focus;
-                            self.restore_location(location);
-                            self.focus = focus;
-                            let index = self.index.as_ref().unwrap();
-                            self.status = format!(
-                                "Indexed {} entries · {} restricted/missing",
-                                index.live_count(),
-                                index.errors
-                            );
-                            if let Ok(progress) = self.progress.lock()
-                                && progress.message.starts_with("Scan complete · ")
-                            {
-                                self.status.push_str(" · ");
-                                self.status.push_str(&progress.message);
-                            }
-                            self.record(self.status.clone());
-                        }
-                        Err(error) => {
-                            self.status = error;
-                            self.record(self.status.clone());
-                        }
-                    }
-                }
+                    Err(error) => self.finish_index(Err(error), None),
+                },
                 Message::Search(n, result) => {
                     self.search_inflight = false;
                     if n != self.generation.load(Ordering::Relaxed) || self.view != View::Find {
@@ -766,7 +694,7 @@ impl App {
                             self.invalidate_rows();
                             self.save_overlay();
                             self.open_modal(Modal::Notice(format!(
-                                "{error}\n\nSome paths may have changed. Press r to refresh the index."
+                                "{error}\n\nSome paths may have changed. Press R for a full scan."
                             )));
                         }
                     }

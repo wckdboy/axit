@@ -46,7 +46,10 @@ fn label(cmd: Command, compact: bool) -> &'static str {
         (Command::Undo, true) => "Undo",
         (Command::Undo, false) => "u Undo",
         (Command::Rescan, true) => "Scan",
-        (Command::Rescan, false) => "r Scan",
+        (Command::Rescan, false) => "R Scan",
+        (Command::Refresh, true) => "Update",
+        (Command::Refresh, false) => "r Update",
+        (Command::CancelIndex, _) => "^C Cancel",
         (Command::Auto, true) => "Auto",
         (Command::Auto, false) => "a Auto",
         (Command::Help, true) => "?",
@@ -68,7 +71,13 @@ fn label(cmd: Command, compact: bool) -> &'static str {
         _ => "Open",
     }
 }
-fn toolbar(width: u16, height: u16, view: View, paged: bool) -> (Vec<(Command, Rect)>, u16, bool) {
+fn toolbar(
+    width: u16,
+    height: u16,
+    view: View,
+    paged: bool,
+    indexing: bool,
+) -> (Vec<(Command, Rect)>, u16, bool) {
     let commands: &[Command] = if view == View::Apps {
         &[
             Command::Install,
@@ -77,6 +86,7 @@ fn toolbar(width: u16, height: u16, view: View, paged: bool) -> (Vec<(Command, R
             Command::Leftovers,
             Command::Undo,
             Command::RefreshApps,
+            Command::CancelIndex,
             Command::Help,
             Command::Quit,
         ]
@@ -95,7 +105,9 @@ fn toolbar(width: u16, height: u16, view: View, paged: bool) -> (Vec<(Command, R
             Command::Move,
             Command::Clean,
             Command::Undo,
+            Command::Refresh,
             Command::Rescan,
+            Command::CancelIndex,
             Command::Auto,
             Command::Help,
             Command::Quit,
@@ -106,6 +118,11 @@ fn toolbar(width: u16, height: u16, view: View, paged: bool) -> (Vec<(Command, R
     let mut y = 0;
     let mut result = Vec::new();
     for &cmd in commands {
+        if matches!(cmd, Command::CancelIndex) && !indexing
+            || matches!(cmd, Command::Refresh | Command::Rescan) && indexing
+        {
+            continue;
+        }
         if !paged && matches!(cmd, Command::PreviousPage | Command::NextPage) {
             continue;
         }
@@ -119,6 +136,8 @@ fn toolbar(width: u16, height: u16, view: View, paged: bool) -> (Vec<(Command, R
                     | Command::Clean
                     | Command::Undo
                     | Command::Help
+                    | Command::Refresh
+                    | Command::CancelIndex
                     | Command::PreviousPage
                     | Command::NextPage
             )
@@ -206,6 +225,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         area.height,
         app.view,
         app.pages.nav.next_cursor.is_some() || app.pages.nav.previous_cursor.is_some(),
+        app.scan.is_some(),
     );
     let layout = Layout::default()
         .direction(Direction::Vertical)
@@ -424,6 +444,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         } else if app.focus == Focus::Inspect {
             app.focus = Focus::List;
         }
+    } else if let Some(error) = &app.index_error {
+        frame.render_widget(
+            Paragraph::new(format!(
+                "{error}\n\nR runs a full scan of the established scope. Ctrl-Q quits."
+            ))
+            .wrap(Wrap { trim: false })
+            .block(pane(" Index needs repair ", true)),
+            layout[3],
+        );
     } else {
         let progress = app.progress.lock().map(|p| p.clone()).unwrap_or_default();
         frame.render_widget(Paragraph::new(format!("Building the first index…\n{} entries · {} restricted/missing\n\nMetadata only. Ctrl-Q cancels and quits.",progress.entries,progress.errors)).wrap(Wrap{trim:false}).block(pane(" Welcome to AXIT ",true)),layout[3]);
@@ -431,8 +460,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let status = if app.scan.is_some() {
         let p = app.progress.lock().map(|p| p.clone()).unwrap_or_default();
         format!(
-            "Scanning: {} entries · {} inaccessible · {}",
-            p.entries, p.errors, app.status
+            "{}: {} entries · {} inaccessible · {}",
+            if app.refreshing {
+                "Updating"
+            } else {
+                "Scanning"
+            },
+            p.entries,
+            p.errors,
+            app.status
         )
     } else if app.needs_rescan {
         format!(
@@ -441,7 +477,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             if app.view == View::Apps {
                 "indexed sizes are stale"
             } else {
-                "r refreshes indexed sizes"
+                "R rebuilds all indexed sizes"
             }
         )
     } else {
@@ -810,7 +846,7 @@ fn inspect(app: &App) -> Vec<Line<'static>> {
     if app.needs_rescan {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
-            "Indexed sizes may be stale. Press r to refresh.",
+            "Other indexed sizes may be stale. R runs a full scan.",
             Style::default().fg(AMBER),
         ));
     }
@@ -976,7 +1012,8 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
                 "Esc Clear marks / leave search · p Show containing folder",
                 "Delete / t Trash preview · m Move · x Cache-cleanup preview",
                 "u Undo last move · s Sort · click column headings to sort",
-                "r Refresh index · a Automatic cleanup · q / Ctrl-Q Quit",
+                "r Update folder · R Full scan · Ctrl-C Cancel index work",
+                "a Automatic cleanup · q / Ctrl-Q Quit",
                 "Apps: i Install · Delete Remove · f Files · l Data · r Reload apps",
                 "",
                 "Click a row to focus; double-click to open or inspect.",

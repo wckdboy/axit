@@ -73,6 +73,11 @@ enum Commands {
     Tui,
     /// Build an immutable, bounded metadata index. Previous index survives failure.
     Scan,
+    /// Update selected metadata paths without rebuilding the base index. Relative to the indexed root.
+    Refresh {
+        #[arg(required = true, num_args = 1..=64, value_name = "PATH")]
+        paths: Vec<PathBuf>,
+    },
     /// Search indexed names: ext:pdf size:>1gib older:30d type:dir path:project.
     Search {
         query: String,
@@ -425,6 +430,16 @@ fn run() -> Result<()> {
                 serde_json::json!({"root":axit::text(&root),"entries":index.live_count(),"allocated_bytes":index.entry(0).map(|e|e.allocated),"restricted_or_missing":index.errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"index_bytes":index.disk_bytes(),"index":axit::text(&path),"scan_message":scan_message,"coverage":"Other mounts and symlinks are not followed. Permission failures appear in latest-scan.json."}),
             )
         }
+        Commands::Refresh { paths } => {
+            let progress = Arc::new(Mutex::new(Progress::default()));
+            let cancel = Arc::new(AtomicBool::new(false));
+            signal_hook::flag::register(signal_hook::consts::SIGINT, cancel.clone())?;
+            signal_hook::flag::register(signal_hook::consts::SIGTERM, cancel.clone())?;
+            eprintln!("AXIT · updating {} path(s) · metadata only", paths.len());
+            output(axit::index::refresh(
+                &root, &state, &paths, progress, cancel,
+            )?)
+        }
         Commands::Search {
             query,
             limit,
@@ -534,7 +549,7 @@ fn run() -> Result<()> {
         Commands::Status => {
             let index = current(&state).ok();
             output(
-                serde_json::json!({"name":"AXIT / WCKD.ai","version":axit::VERSION,"root":axit::text(&root),"volume":axit::system::volume(&root)?,"entries":index.as_ref().map(|i|i.live_count()),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"last_refresh_unix":index.as_ref().and_then(|i|i.last_refresh()),"restricted_or_missing":index.as_ref().map(|i|i.errors),"automatic_cleanup":ops::auto_policy(&state)?}),
+                serde_json::json!({"name":"AXIT / WCKD.ai","version":axit::VERSION,"root":axit::text(&root),"volume":axit::system::volume(&root)?,"entries":index.as_ref().map(|i|i.live_count()),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"last_full_scan_unix":index.as_ref().map(|i|i.finished),"last_refresh_unix":index.as_ref().and_then(|i|i.last_refresh()),"restricted_or_missing":index.as_ref().map(|i|i.errors),"automatic_cleanup":ops::auto_policy(&state)?}),
             )
         }
         Commands::Doctor => {

@@ -13,9 +13,11 @@ use std::{
 
 const MAX_PATHS: usize = 64;
 const MAX_VISITED: usize = delta::MAX_CHANGES as usize;
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct RefreshReport {
     pub scopes: Vec<String>,
+    #[serde(skip)]
+    pub(crate) paths: Vec<PathBuf>,
     pub visited: u64,
     pub added: u32,
     pub removed: u32,
@@ -88,6 +90,30 @@ fn scoped_path(path: &Path, root: &Path) -> Result<PathBuf> {
     }
     anyhow::bail!("Refresh path is outside the indexed root")
 }
+/// Validate paths without following their final names, including deleted names.
+/// Relative paths are interpreted inside `scope`.
+pub fn refresh_paths(scope: &Path, paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    ensure!(scope.is_absolute(), "Refresh scope must be absolute");
+    ensure!(
+        !paths.is_empty() && paths.len() <= MAX_PATHS,
+        "Choose 1–64 refresh paths"
+    );
+    ensure!(
+        paths.iter().map(|p| p.as_os_str().len()).sum::<usize>() <= 64 * 1024,
+        "Refresh path budget exceeded"
+    );
+    paths
+        .iter()
+        .map(|p| {
+            ensure!(
+                !p.as_os_str().is_empty() && !p.as_os_str().as_bytes().contains(&0),
+                "Refresh paths cannot be empty or contain NUL"
+            );
+            scoped_path(p, scope)
+        })
+        .collect()
+}
+
 fn target(index: &Index, path: PathBuf, root: &Path) -> Result<Target> {
     let parts: Vec<_> = path
         .strip_prefix(root)?
@@ -417,15 +443,21 @@ pub fn refresh(
     progress: Arc<Mutex<Progress>>,
     cancel: Arc<AtomicBool>,
 ) -> Result<RefreshReport> {
+    refresh_scoped(root, state, paths, root, progress, cancel)
+}
+
+/// Reject expansion to an unindexed ancestor outside `scope`, under the same
+/// publication lock as reconciliation and snapshot validation.
+pub fn refresh_scoped(
+    root: &Path,
+    state: &Path,
+    paths: &[PathBuf],
+    scope: &Path,
+    progress: Arc<Mutex<Progress>>,
+    cancel: Arc<AtomicBool>,
+) -> Result<RefreshReport> {
     let started = Instant::now();
-    ensure!(
-        !paths.is_empty() && paths.len() <= MAX_PATHS,
-        "Choose 1–64 refresh paths"
-    );
-    ensure!(
-        paths.iter().map(|p| p.as_os_str().len()).sum::<usize>() <= 64 * 1024,
-        "Refresh path budget exceeded"
-    );
+    let paths = refresh_paths(scope, paths)?;
     check(&cancel)?;
     let state = state.canonicalize()?;
     let lock = File::options()
@@ -443,17 +475,23 @@ pub fn refresh(
         root.canonicalize()? == indexed_root,
         "Refresh root differs from the index; run a full scan first"
     );
+    let scope = scoped_path(scope, &indexed_root)?;
     let root_entry = index.entry(0).context("Missing index root")?;
     let anchor = Directory::root(&indexed_root, (root_entry.device, root_entry.inode))?;
     let excluded = crate::scoped_alias(&state, &indexed_root).unwrap_or_else(|_| state.clone());
     let mut targets = vec![];
-    for path in paths {
+    for path in &paths {
         let path = scoped_path(path, &indexed_root)?;
         ensure!(
             !path.starts_with(&excluded),
             "Axit's private index directory is excluded from refresh"
         );
-        targets.push(target(&index, path, &indexed_root)?);
+        let target = target(&index, path, &indexed_root)?;
+        ensure!(
+            target.path.starts_with(&scope),
+            "Refresh needs an unindexed ancestor outside this scope; index that ancestor first"
+        );
+        targets.push(target);
     }
     targets.sort_by_key(|t| (t.path.components().count(), t.path.clone()));
     let mut scopes: Vec<Target> = vec![];
@@ -627,6 +665,7 @@ pub fn refresh(
         .context("Invalid refreshed live count")?;
     let mut report = RefreshReport {
         scopes: scopes.iter().map(|t| crate::text(&t.path)).collect(),
+        paths: scopes.iter().map(|t| t.path.clone()).collect(),
         visited: reconciler.visited,
         added,
         removed,
@@ -655,6 +694,7 @@ pub fn refresh(
         parent
             .sync_all()
             .context("Cannot sync the private state directory; previous generation preserved")?;
+        check(&cancel)?;
         fs::rename(&path, crate::index_path(&state).with_extension("delta"))?;
         report.published = true;
         report.delta_bytes = candidate.disk_bytes();

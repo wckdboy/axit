@@ -19,7 +19,7 @@ use std::{
 mod delta;
 mod refresh;
 mod walk;
-pub use refresh::{RefreshReport, refresh};
+pub use refresh::{RefreshReport, refresh, refresh_paths, refresh_scoped};
 
 const HEADER: usize = 64;
 const RECORD: usize = 64;
@@ -659,6 +659,10 @@ pub fn scan(
     let target = crate::index_path(&state);
     let directory = File::open(&state)?;
     directory.sync_all()?;
+    ensure!(
+        !cancel.load(Ordering::Relaxed),
+        "Scan canceled; previous index preserved"
+    );
     fs::rename(&output, &target)?;
     // The old delta remains useful to readers of the old base. Retire its
     // directory entry only after the new base rename is durable; otherwise a

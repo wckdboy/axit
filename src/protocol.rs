@@ -16,6 +16,8 @@ use std::{
     thread,
 };
 
+mod index_jobs;
+
 type Output = Arc<Mutex<io::BufWriter<io::Stdout>>>;
 struct Shared {
     state: PathBuf,
@@ -25,6 +27,8 @@ struct Shared {
     scanning: AtomicBool,
     cancel: Arc<AtomicBool>,
     scan_thread: Mutex<Option<thread::JoinHandle<()>>>,
+    job: Mutex<Option<index_jobs::JobStatus>>,
+    stopping: AtomicBool,
     sessions: Mutex<HashMap<String, PathBuf>>,
     sequence: AtomicU64,
     writes: bool,
@@ -116,59 +120,6 @@ impl Shared {
             .clone()
             .context("No index yet. Call axit_scan, then poll axit_status")
     }
-    fn scan(self: &Arc<Self>) -> Result<Value> {
-        if self.scanning.swap(true, Ordering::AcqRel) {
-            return Ok(json!({"status":"already_scanning"}));
-        }
-        if let Some(old) = self
-            .scan_thread
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Scan lock unavailable"))?
-            .take()
-        {
-            let _ = old.join();
-        }
-        self.cancel.store(false, Ordering::Relaxed);
-        if let Ok(mut p) = self.progress.lock() {
-            *p = Progress::default();
-        }
-        let shared = self.clone();
-        let handle = thread::spawn(move || {
-            let result = crate::index::scan(
-                &shared.root,
-                &shared.state,
-                shared.progress.clone(),
-                shared.cancel.clone(),
-            )
-            .and_then(|p| Index::open(&p));
-            match result {
-                Ok(index) => {
-                    if let Ok(mut value) = shared.index.write() {
-                        *value = Some(Arc::new(index));
-                    }
-                }
-                Err(e) => {
-                    if let Ok(mut p) = shared.progress.lock() {
-                        p.message = format!("{e:#}");
-                        p.done = true;
-                    }
-                }
-            }
-            shared.scanning.store(false, Ordering::Release);
-        });
-        *self
-            .scan_thread
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Scan lock unavailable"))? = Some(handle);
-        Ok(json!({"status":"started","root":crate::text(&self.root)}))
-    }
-    fn status(&self) -> Value {
-        let index = self.index().ok();
-        json!({"name":"AXIT","version":crate::VERSION,"root":crate::text(&self.root),"scanning":self.scanning.load(Ordering::Acquire),
-            "progress":self.progress.lock().ok().map(|p|p.clone()),"entries":index.as_ref().map(|i|i.live_count()),"index_bytes":index.as_ref().map(|i|i.disk_bytes()),"last_refresh_unix":index.as_ref().and_then(|i|i.last_refresh()),
-            "restricted_or_missing":index.as_ref().map(|i|i.errors),"volume":crate::system::volume(&self.root).ok(),"mutations_enabled":self.writes,
-            "coverage_note":"Permission failures are reported. Folder totals overlap; APFS shared blocks affect reclaimable space."})
-    }
     fn tool(self: &Arc<Self>, name: &str, args: &Value, generation: &AtomicU64) -> Result<Value> {
         let legacy = name
             .strip_prefix("scry_")
@@ -233,7 +184,28 @@ impl Shared {
             }
             "axit_scan" => {
                 keys(args, &[])?;
-                self.scan()
+                self.scan(None)
+            }
+            "axit_refresh" => {
+                keys(args, &["paths"])?;
+                let paths = args["paths"].as_array().context("paths must be an array")?;
+                ensure!(
+                    !paths.is_empty() && paths.len() <= 64,
+                    "Choose 1–64 refresh paths"
+                );
+                let paths = paths
+                    .iter()
+                    .map(|p| {
+                        let p = p.as_str().context("Each path must be a string")?;
+                        ensure!(p.len() <= 4096, "Refresh path is too long");
+                        Ok(PathBuf::from(p))
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                self.refresh_index(&paths, &self.root, None)
+            }
+            "axit_cancel_index" => {
+                keys(args, &[])?;
+                self.cancel_index(None)
             }
             "axit_search" => {
                 keys(args, &["query", "limit", "sort", "cursor"])?;
@@ -397,6 +369,20 @@ pub fn tools(writes: bool) -> Vec<Value> {
             false,
         ),
         tool(
+            "axit_refresh",
+            "Update selected metadata paths in the fixed root without rebuilding the base index. Relative paths use that root. Background job; poll axit_status for completion/report. No user files change.",
+            json!({"paths":{"type":"array","items":{"type":"string","minLength":1,"maxLength":4096},"minItems":1,"maxItems":64}}),
+            &["paths"],
+            false,
+        ),
+        tool(
+            "axit_cancel_index",
+            "Request cancellation of the active metadata scan or refresh. Poll axit_status; cancellation before publication preserves the previous snapshot.",
+            json!({}),
+            &[],
+            false,
+        ),
+        tool(
             "axit_search",
             "Find indexed filenames. Supports quoted words, globs, ext:, size:, older:, type:, path:, !term and re:.",
             json!({"query":{"type":"string","maxLength":4096},"limit":{"type":"integer","minimum":1,"maximum":500},"sort":{"enum":["name","size","modified"]},"cursor":{"type":"string","maxLength":178}}),
@@ -492,10 +478,24 @@ fn acp_prompt(
     ensure!(text.len() <= 4096, "Prompt is too long");
     let input = text.trim();
     if input == "/status" {
-        return Ok(shared.status());
+        return Ok(shared.status_for(Some(session)));
     }
     if input == "/scan" {
-        return shared.scan();
+        return shared.scan(Some(session));
+    }
+    if input == "/cancel-index" {
+        return shared.cancel_index(Some(session));
+    }
+    if let Some(path) = input
+        .strip_prefix("/refresh")
+        .filter(|p| p.is_empty() || p.starts_with(' '))
+    {
+        let path = if path.trim().is_empty() {
+            PathBuf::from(".")
+        } else {
+            PathBuf::from(path.trim())
+        };
+        return shared.refresh_index(&[path], &cwd, Some(session));
     }
     if input == "/apps" || input.starts_with("/apps ") {
         return app_inventory(&cwd, input.strip_prefix("/apps").unwrap_or("").trim(), 100);
@@ -559,7 +559,7 @@ fn acp_prompt(
     )?;
     Ok(
         json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"canceled":result.canceled,"page":result.paging,"entries":result.ids.iter().map(|id|entry_json(&index,*id)).collect::<Result<Vec<_>>>()?,
-        "commands":"/search [--cursor TOKEN] QUERY · /largest [--cursor TOKEN] · /status · /scan · /apps [QUERY] · /app KEY · /plan ID… · deterministic metadata adapter; no model or file contents required"}),
+        "commands":"/search [--cursor TOKEN] QUERY · /largest [--cursor TOKEN] · /status · /scan · /refresh [PATH] · /cancel-index · /apps [QUERY] · /app KEY · /plan ID… · deterministic metadata adapter; no model or file contents required"}),
     )
 }
 
@@ -578,6 +578,8 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
         scanning: AtomicBool::new(false),
         cancel: Arc::new(AtomicBool::new(false)),
         scan_thread: Mutex::new(None),
+        job: Mutex::new(None),
+        stopping: AtomicBool::new(false),
         sessions: Mutex::new(HashMap::new()),
         sequence: AtomicU64::new(0),
         writes,
@@ -642,6 +644,12 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
                 && let Some(cancel) = j.get(&format!("acp:{session}"))
             {
                 cancel.store(1, Ordering::Relaxed);
+            }
+            if acp
+                && method == "session/cancel"
+                && let Some(session) = params["sessionId"].as_str()
+            {
+                let _ = shared.cancel_index(Some(session));
             }
             continue;
         }
@@ -717,7 +725,7 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
                     respond(&output, id, json!({"sessionId":session}));
                     send(
                         &output,
-                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"apps","description":"List scoped application metadata","input":{"hint":"optional name"}},{"name":"app","description":"Inspect scoped related files","input":{"hint":"app key"}},{"name":"search","description":"Find indexed filenames","input":{"hint":"[--cursor TOKEN] query"}},{"name":"largest","description":"Show largest entries","input":{"hint":"[--cursor TOKEN]"}},{"name":"status","description":"Index, disk space and coverage"},{"name":"scan","description":"Refresh the fixed scan scope"},{"name":"plan","description":"Preview safe cache cleanup","input":{"hint":"entry ids"}}]}}}),
+                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"apps","description":"List scoped application metadata","input":{"hint":"optional name"}},{"name":"app","description":"Inspect scoped related files","input":{"hint":"app key"}},{"name":"search","description":"Find indexed filenames","input":{"hint":"[--cursor TOKEN] query"}},{"name":"largest","description":"Show largest entries","input":{"hint":"[--cursor TOKEN]"}},{"name":"status","description":"Index, disk space and coverage"},{"name":"scan","description":"Rebuild the fixed server scan scope"},{"name":"refresh","description":"Update this session folder or one path within it","input":{"hint":"optional relative path; spaces are literal"}},{"name":"cancel-index","description":"Cancel this session’s active scan or refresh"},{"name":"plan","description":"Preview safe cache cleanup","input":{"hint":"entry ids"}}]}}}),
                     );
                 }
                 Err(e) => error(&output, id, -32602, &e.to_string()),
@@ -784,6 +792,7 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
             }
         }
     }
+    shared.stopping.store(true, Ordering::Release);
     shared.cancel.store(true, Ordering::Relaxed);
     if let Ok(registry) = jobs.lock() {
         for cancel in registry.values() {
