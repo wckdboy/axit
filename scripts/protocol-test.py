@@ -413,7 +413,9 @@ with tempfile.TemporaryDirectory(prefix='axit-refresh-protocol-') as temporary:
     prompt(session, '/refresh')
     status = completed(acp, lambda:prompt(session, '/status'))
     check('outside this scope' in status['index_job']['error'], status)
-    check(prompt(first, '/search private')['matched']==0, 'Session refresh exposed another folder')
+    whole = acp.request('session/new', {'cwd':str(root), 'mcpServers':[]})['result']['sessionId']
+    exposed = prompt(whole, '/search private.txt')
+    check(exposed['matched']==1 and [e['path'] for e in exposed['entries']]==[str(root/'right/private.txt')], 'Failed session refresh exposed an unindexed sibling')
     acp.close()
 
 print(f'Protocol checks passed: {checks} · MCP read-only/write gates + ACP scoped sessions + framing + cursor pagination')

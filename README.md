@@ -210,7 +210,8 @@ Relative refresh paths use the indexed root, independently of the shell's workin
 directory. Choose 1–64 files or folders; deleted names are valid. The JSON report
 lists the actual reconciled scopes, visited/added/removed/updated counts,
 publication, elapsed time, sidecar bytes and any post-publication warning.
-Overlapping paths are coalesced. A missing intermediate directory may widen a
+Overlapping paths are coalesced. Recorded metadata is checked again before
+publication so detected changes during traversal preserve the prior snapshot. A missing intermediate directory may widen a
 refresh to the first unindexed ancestor within the permitted scope.
 
 In Space/Clean, `r` updates the current folder; in Find it updates the focused
@@ -222,11 +223,14 @@ row caches and file-operation previews. A partial update keeps stale-file marker
 outside its scopes. Remaining uncertainty stays visible until a root refresh or
 full scan. Apps keeps `r` for reloading its application inventory.
 
-Each refresh is capped at 131,072 visited/changed records and a 16 MiB sidecar.
+Each refresh is capped at 131,072 visited/changed/verified records and a 16 MiB sidecar.
 Budget exhaustion, scope failures and cancellation before publication preserve
 the previous snapshot; choose a narrower scope or run a full scan. No automatic
 full scan follows a failed update. Existing full-scan permission gaps remain
-reported. `last_refresh_unix` describes a partial metadata publication;
+reported. Already restricted directories with no indexed descendants retain
+that known gap while other paths update. Newly unreadable directories, or access
+failures that would discard known descendants, preserve the prior snapshot;
+use a full scan to record new coverage gaps. `last_refresh_unix` describes a partial metadata publication;
 `last_full_scan_unix` describes the original whole-scope scan, so an update does
 not imply whole-index freshness. Symlinks and other mounted filesystems are not
 followed. A damaged sidecar retains the base root for explicit full-scan repair.

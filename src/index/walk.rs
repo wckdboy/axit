@@ -11,7 +11,7 @@ use std::{
     path::{Component, Path},
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Facts {
     pub device: u64,
     pub inode: u64,
@@ -29,23 +29,7 @@ pub(super) struct Facts {
 #[allow(clippy::unnecessary_cast)]
 impl Facts {
     pub fn same_read(self, other: Self) -> bool {
-        (
-            self.device,
-            self.inode,
-            self.modified,
-            self.modified_ns,
-            self.changed,
-            self.changed_ns,
-            self.allocated,
-        ) == (
-            other.device,
-            other.inode,
-            other.modified,
-            other.modified_ns,
-            other.changed,
-            other.changed_ns,
-            other.allocated,
-        )
+        self == other
     }
     pub fn directory(self) -> bool {
         self.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32

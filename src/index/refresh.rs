@@ -53,6 +53,11 @@ fn absent(error: &anyhow::Error) -> bool {
         .downcast_ref::<std::io::Error>()
         .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound)
 }
+fn permission_error(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied)
+}
 fn check(cancel: &AtomicBool) -> Result<()> {
     ensure!(
         !cancel.load(Ordering::Relaxed),
@@ -171,8 +176,70 @@ struct Reconciler<'a> {
     affected: HashSet<(u64, u64)>,
     visited: u64,
     touched: HashSet<u32>,
+    observed: BTreeMap<(u32, u32), Facts>,
+    parents_with_children: HashSet<u32>,
 }
 impl<'a> Reconciler<'a> {
+    fn can_keep_restricted(&self, old: Option<u32>) -> bool {
+        old.is_some_and(|id| {
+            self.index
+                .entry(id)
+                .is_some_and(|e| e.is_dir() && e.flags & RESTRICTED != 0)
+                && !self.parents_with_children.contains(&id)
+        })
+    }
+    fn anchor(
+        &self,
+        parent: &Directory,
+        name: &[u8],
+        facts: Facts,
+        old: Option<u32>,
+    ) -> Result<Option<Directory>> {
+        if !facts.directory() {
+            return Ok(None);
+        }
+        match parent.child(name, facts) {
+            Ok(directory) => Ok(Some(directory)),
+            Err(error) if permission_error(&error) && self.can_keep_restricted(old) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+    fn observe(&mut self, entry: Entry, facts: Facts) -> Result<()> {
+        self.observed.insert((entry.parent, entry.id), facts);
+        ensure!(
+            self.observed.len() <= MAX_VISITED,
+            "Refresh verification budget reached; choose a narrower scope or run a full scan"
+        );
+        Ok(())
+    }
+
+    fn verify_observed(&self) -> Result<()> {
+        let mut parent_id = None;
+        let mut parent = None;
+        for ((id_parent, id), expected) in &self.observed {
+            check(self.cancel)?;
+            let actual = if *id == 0 {
+                self.root.facts()?
+            } else {
+                if parent_id != Some(*id_parent) {
+                    parent = Some(self.directory(*id_parent)?);
+                    parent_id = Some(*id_parent);
+                }
+                let entry = self.entry(*id).context("Observed entry disappeared")?;
+                parent
+                    .as_ref()
+                    .context("Missing verification parent")?
+                    .stat(self.name(entry))
+                    .context("Filesystem changed during refresh; previous generation preserved")?
+            };
+            ensure!(
+                expected.same_read(actual),
+                "Filesystem metadata changed during refresh; retry; previous generation preserved"
+            );
+        }
+        Ok(())
+    }
+
     fn entry(&self, id: u32) -> Option<Entry> {
         match self.changes.get(&id) {
             Some(v) => v.as_ref().map(|v| v.entry),
@@ -280,7 +347,7 @@ impl<'a> Reconciler<'a> {
             );
             id
         };
-        let e = Self::metadata(
+        let mut e = Self::metadata(
             Entry {
                 id,
                 parent,
@@ -296,15 +363,36 @@ impl<'a> Reconciler<'a> {
             },
             facts,
         );
+        if facts.directory() && directory.is_none() {
+            ensure!(self.can_keep_restricted(old), "Missing directory anchor");
+            e.flags |= RESTRICTED;
+        }
         self.stage(e, name)?;
+        self.observe(e, facts)?;
         if facts.regular() {
             self.facts.insert((facts.device, facts.inode), facts);
             self.affected.insert((facts.device, facts.inode));
         }
         let mut allocated = facts.allocated;
         if facts.directory() {
-            let directory = directory.context("Missing directory anchor")?;
-            for child in directory.entries()? {
+            let Some(directory) = directory else {
+                return Ok((id, allocated));
+            };
+            let children = match directory.entries() {
+                Ok(children) => children,
+                Err(error) if permission_error(&error) && self.can_keep_restricted(old) => {
+                    self.stage(
+                        Entry {
+                            flags: e.flags | RESTRICTED,
+                            ..e
+                        },
+                        name,
+                    )?;
+                    return Ok((id, allocated));
+                }
+                Err(error) => return Err(error),
+            };
+            for child in children {
                 check(self.cancel)?;
                 let child = child?;
                 let child_path = path.join(OsStr::from_bytes(&child));
@@ -321,11 +409,7 @@ impl<'a> Reconciler<'a> {
                     continue;
                 }
                 let old = self.by_name.get(&(id, child.as_slice())).copied();
-                let anchor = if md.directory() {
-                    Some(directory.child(&child, md)?)
-                } else {
-                    None
-                };
+                let anchor = self.anchor(&directory, &child, md, old)?;
                 let (_, bytes) = self.visit(
                     id,
                     old,
@@ -372,6 +456,7 @@ impl<'a> Reconciler<'a> {
             let current = self.entry(id).context("Missing effective ancestor")?;
             let directory = self.directory(id)?;
             let facts = directory.facts()?;
+            self.observe(current, facts)?;
             let own = old
                 .allocated
                 .checked_sub(*self.child_sums.get(&id).unwrap_or(&0))
@@ -429,6 +514,7 @@ impl<'a> Reconciler<'a> {
                 let difference = fresh.allocated as i128 - old.allocated as i128;
                 let name = self.name(old).to_vec();
                 self.stage(fresh, &name)?;
+                self.observe(fresh, facts)?;
                 self.adjust(old.parent, difference)?;
             }
         }
@@ -455,6 +541,18 @@ pub fn refresh_scoped(
     scope: &Path,
     progress: Arc<Mutex<Progress>>,
     cancel: Arc<AtomicBool>,
+) -> Result<RefreshReport> {
+    reconcile(root, state, paths, scope, progress, cancel, || {})
+}
+
+fn reconcile(
+    root: &Path,
+    state: &Path,
+    paths: &[PathBuf],
+    scope: &Path,
+    progress: Arc<Mutex<Progress>>,
+    cancel: Arc<AtomicBool>,
+    before_validation: impl FnOnce(),
 ) -> Result<RefreshReport> {
     let started = Instant::now();
     let paths = refresh_paths(scope, paths)?;
@@ -518,6 +616,8 @@ pub fn refresh_scoped(
         affected: HashSet::new(),
         visited: 0,
         touched: HashSet::new(),
+        observed: BTreeMap::new(),
+        parents_with_children: HashSet::new(),
     };
     if let Some(delta) = &index.delta {
         for id in 0..index.count {
@@ -566,6 +666,7 @@ pub fn refresh_scoped(
                 "Selected subtree exceeds the incremental budget; choose a narrower scope or run a full scan"
             );
             reconciler.by_name.insert((e.parent, index.name(e)), id);
+            reconciler.parents_with_children.insert(e.parent);
             if !e.is_dir() && !e.is_link() {
                 reconciler.affected.insert((e.device, e.inode));
             }
@@ -599,11 +700,7 @@ pub fn refresh_scoped(
                 }
                 Ok(facts) if facts.device != root_entry.device => None,
                 Ok(facts) => {
-                    let directory = if facts.directory() {
-                        Some(parent.child(&scope.name, facts)?)
-                    } else {
-                        None
-                    };
+                    let directory = reconciler.anchor(&parent, &scope.name, facts, scope.old)?;
                     let result = reconciler.visit(
                         scope.parent,
                         scope.old,
@@ -694,6 +791,11 @@ pub fn refresh_scoped(
         parent
             .sync_all()
             .context("Cannot sync the private state directory; previous generation preserved")?;
+        // The private hook lets tests force a race after candidate construction.
+        // The public path instantiates an empty closure, optimized away.
+        before_validation();
+        reconciler.verify_observed()?;
+        Directory::root(&reconciler.root_path, (root_entry.device, root_entry.inode))?;
         check(&cancel)?;
         fs::rename(&path, crate::index_path(&state).with_extension("delta"))?;
         report.published = true;
@@ -703,6 +805,11 @@ pub fn refresh_scoped(
                 "Index published, but directory durability was not confirmed: {error}"
             ));
         }
+    } else {
+        before_validation();
+        reconciler.verify_observed()?;
+        Directory::root(&reconciler.root_path, (root_entry.device, root_entry.inode))?;
+        check(&cancel)?;
     }
     report.elapsed_ms = started.elapsed().as_secs_f64() * 1000.;
     if let Ok(mut p) = progress.lock() {
@@ -716,4 +823,178 @@ pub fn refresh_scoped(
         .into();
     }
     Ok(report)
+}
+
+#[cfg(test)]
+mod race_tests {
+    use super::*;
+    fn fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("files");
+        let state = temp.path().join("state");
+        fs::create_dir_all(root.join("nested/deep")).unwrap();
+        fs::create_dir_all(root.join("other")).unwrap();
+        fs::create_dir(&state).unwrap();
+        fs::write(root.join("nested/file"), vec![1; 8192]).unwrap();
+        let root = root.canonicalize().unwrap();
+        let state = state.canonicalize().unwrap();
+        super::super::scan(
+            &root,
+            &state,
+            Arc::new(Mutex::new(Progress::default())),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
+        (temp, root, state)
+    }
+    fn run(
+        root: &Path,
+        state: &Path,
+        scope: &str,
+        cancel: Arc<AtomicBool>,
+        change: impl FnOnce(),
+    ) -> Result<RefreshReport> {
+        reconcile(
+            root,
+            state,
+            &[PathBuf::from(scope)],
+            root,
+            Arc::new(Mutex::new(Progress::default())),
+            cancel,
+            change,
+        )
+    }
+    #[test]
+    fn leaf_write_during_candidate_construction_preserves_the_previous_sidecar() {
+        let (_temp, root, state) = fixture();
+        fs::write(root.join("nested/file"), vec![2; 16384]).unwrap();
+        run(
+            &root,
+            &state,
+            "nested",
+            Arc::new(AtomicBool::new(false)),
+            || {},
+        )
+        .unwrap();
+        let delta = crate::index_path(&state).with_extension("delta");
+        let previous = fs::read(&delta).unwrap();
+        let old = Index::open(&crate::index_path(&state)).unwrap();
+        fs::write(root.join("nested/new"), b"new").unwrap();
+        let parent = Directory::root(&root.join("nested"), {
+            let md = fs::metadata(root.join("nested")).unwrap();
+            (md.dev(), md.ino())
+        })
+        .unwrap();
+        let before = parent.facts().unwrap();
+        let error = run(
+            &root,
+            &state,
+            "nested",
+            Arc::new(AtomicBool::new(false)),
+            || {
+                fs::write(root.join("nested/file"), vec![3; 65536]).unwrap();
+                assert!(
+                    before.same_read(parent.facts().unwrap()),
+                    "Leaf writes must leave directory facts unchanged in this fixture"
+                );
+            },
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("metadata changed during refresh")
+        );
+        assert_eq!(fs::read(&delta).unwrap(), previous);
+        assert_eq!(
+            Index::open(&crate::index_path(&state)).unwrap().stamp(),
+            old.stamp()
+        );
+    }
+    #[test]
+    fn a_noop_refresh_rechecks_leaves_instead_of_reporting_an_obsolete_snapshot_fresh() {
+        let (_temp, root, state) = fixture();
+        let base = crate::index_path(&state);
+        let old = fs::read(&base).unwrap();
+        let error = run(
+            &root,
+            &state,
+            "nested",
+            Arc::new(AtomicBool::new(false)),
+            || {
+                fs::write(root.join("nested/file"), vec![4; 32768]).unwrap();
+            },
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("metadata changed during refresh")
+        );
+        assert_eq!(fs::read(&base).unwrap(), old);
+        assert!(!base.with_extension("delta").exists());
+    }
+    #[test]
+    fn final_verification_detects_new_entries_in_already_visited_nested_directories() {
+        let (_temp, root, state) = fixture();
+        let base = crate::index_path(&state);
+        let old = fs::read(&base).unwrap();
+        let error = run(
+            &root,
+            &state,
+            "nested",
+            Arc::new(AtomicBool::new(false)),
+            || {
+                fs::write(root.join("nested/deep/late"), b"late").unwrap();
+            },
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("metadata changed during refresh")
+        );
+        assert_eq!(fs::read(&base).unwrap(), old);
+        assert!(!base.with_extension("delta").exists());
+    }
+    #[test]
+    fn related_hardlink_replacement_outside_the_scope_is_checked_before_publication() {
+        let (_temp, root, state) = fixture();
+        fs::hard_link(root.join("nested/file"), root.join("other/alias")).unwrap();
+        super::super::scan(
+            &root,
+            &state,
+            Arc::new(Mutex::new(Progress::default())),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
+        fs::write(root.join("nested/file"), vec![5; 16384]).unwrap();
+        let result = run(
+            &root,
+            &state,
+            "nested/file",
+            Arc::new(AtomicBool::new(false)),
+            || {
+                fs::remove_file(root.join("other/alias")).unwrap();
+                fs::write(root.join("other/alias"), b"replacement").unwrap();
+            },
+        );
+        assert!(result.is_err());
+        assert!(!crate::index_path(&state).with_extension("delta").exists());
+    }
+    #[test]
+    fn cancellation_at_the_commit_boundary_preserves_the_previous_generation() {
+        let (_temp, root, state) = fixture();
+        let base = crate::index_path(&state);
+        let old = fs::read(&base).unwrap();
+        fs::write(root.join("nested/new"), b"new").unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let error = run(&root, &state, "nested", cancel.clone(), || {
+            cancel.store(true, Ordering::Relaxed)
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("canceled"));
+        assert_eq!(fs::read(&base).unwrap(), old);
+        assert!(!base.with_extension("delta").exists());
+    }
 }

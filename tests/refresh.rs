@@ -847,3 +847,94 @@ fn cli_refresh_handles_relative_and_absolute_names_with_a_persistent_bounded_sid
     assert_eq!(result["published"], false);
     assert_eq!(fs::read(base.with_extension("delta")).unwrap(), delta);
 }
+
+struct RestoreDirectoryPermissions(PathBuf);
+impl Drop for RestoreDirectoryPermissions {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o700));
+    }
+}
+#[test]
+fn previously_restricted_empty_directories_keep_their_gap_while_other_paths_update() {
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let (_temp, root, state) = fixture();
+    let blocked = root.join("a/nested");
+    let _restore = RestoreDirectoryPermissions(blocked.clone());
+    fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
+    let original = scan(&root, &state);
+    assert_eq!(original.errors, 1);
+    fs::write(root.join("a/new.txt"), b"new").unwrap();
+    let report = refresh(&root, &state, &["a"]);
+    assert_eq!(report.added, 1);
+    let current = Index::open(&wckd_axit::index_path(&state)).unwrap();
+    let restricted = current.entry(current.find_path(&blocked).unwrap()).unwrap();
+    assert!(restricted.flags & index::RESTRICTED != 0);
+    assert_eq!(current.errors, original.errors);
+    assert!(current.find_path(&blocked.join("two.txt")).is_none());
+    assert_matches_scan(&root, &state);
+    let noop = refresh(&root, &state, &["a/nested"]);
+    assert!(!noop.published);
+}
+#[test]
+fn restricted_flags_never_allow_a_refresh_to_remove_previously_indexed_descendants() {
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let (_temp, root, state) = fixture();
+    let blocked = root.join("a/nested");
+    let _restore = RestoreDirectoryPermissions(blocked.clone());
+    fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
+    scan(&root, &state);
+    fs::set_permissions(&blocked, fs::Permissions::from_mode(0o700)).unwrap();
+    refresh(&root, &state, &["a/nested/two.txt"]);
+    let base = wckd_axit::index_path(&state);
+    let old = Index::open(&base).unwrap();
+    assert!(old.find_path(&blocked.join("two.txt")).is_some());
+    assert!(old.entry(old.find_path(&blocked).unwrap()).unwrap().flags & index::RESTRICTED != 0);
+    let before = fs::read(base.with_extension("delta")).unwrap();
+    fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
+    assert!(
+        index::refresh(
+            &root,
+            &state,
+            &[PathBuf::from("a")],
+            Arc::new(Mutex::new(Progress::default())),
+            Arc::new(AtomicBool::new(false))
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read(base.with_extension("delta")).unwrap(), before);
+    assert_eq!(Index::open(&base).unwrap().stamp(), old.stamp());
+}
+#[test]
+fn newly_unreadable_directories_require_a_full_scan_to_record_the_new_coverage_gap() {
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let (_temp, root, state) = fixture();
+    scan(&root, &state);
+    let blocked = root.join("a/new-restricted");
+    fs::create_dir(&blocked).unwrap();
+    let _restore = RestoreDirectoryPermissions(blocked.clone());
+    fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
+    assert!(
+        index::refresh(
+            &root,
+            &state,
+            &[PathBuf::from("a")],
+            Arc::new(Mutex::new(Progress::default())),
+            Arc::new(AtomicBool::new(false))
+        )
+        .is_err()
+    );
+    assert!(
+        !wckd_axit::index_path(&state)
+            .with_extension("delta")
+            .exists()
+    );
+    let full = scan(&root, &state);
+    assert_eq!(full.errors, 1);
+    assert!(full.entry(full.find_path(&blocked).unwrap()).unwrap().flags & index::RESTRICTED != 0);
+}
