@@ -88,7 +88,7 @@ TUI keys:
 
 - `1` Space, `2` Find, `3` Clean, `4` Activity keeps focus on navigation, so
   repeated number shortcuts never get trapped in a text field. `Enter` enters a section.
-- `Alt-1…4` / `Ctrl-1…4` works even in text fields and dialogs. `Ctrl-Tab` /
+- `Alt-1…4` works even in text fields and dialogs. `Ctrl-Tab` /
   `Ctrl-Shift-Tab` switches sections; `Ctrl-PageDown/Up` is an alternative for terminals
   that intercept those keys. Switching sections safely cancels a pending review.
 - `F6` toggles navigation/content focus. In navigation, arrows choose a section and

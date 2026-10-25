@@ -999,7 +999,10 @@ fn preview(frame: &mut Frame, app: &mut App, inside: Rect) {
             "Move to Trash",
         ),
         Action::Clean => (
-            format!("Permanently delete {count} caches?"),
+            format!(
+                "Permanently delete {count} {}?",
+                if count == 1 { "cache" } else { "caches" }
+            ),
             "Verified generated files only. This cannot be undone.".to_string(),
             "Delete permanently",
         ),
