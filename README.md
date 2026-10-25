@@ -20,34 +20,32 @@ editing it; site checks verify both generated SVGs match.
 ## Project status
 
 [Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
-tracks current work and the roadmap. [Axit 0.4.0](https://github.com/wckdboy/axit/releases/tag/v0.4.0)
+tracks current work and the roadmap. [Axit 0.4.1](https://github.com/wckdboy/axit/releases/tag/v0.4.1)
 is released with the Apps view, reviewed standalone removal, Homebrew/Flatpak
 installation, related-data review and scoped MCP/ACP app inspection. It includes
 the Copper palette, shared split-pixel mark, arrow navigation and storage map.
+Explicit roots work without HOME, and Apps selection stays separate from file marks.
 [axit.sh](https://axit.sh) is deployed through the standard [Wrangler workflow](site/README.md).
 
-The 0.4.1 candidate resolves explicit roots without requiring HOME to be set
-and prevents Ctrl-A from creating hidden file marks in the single-app selection view.
-An isolated CLI regression and a real Apps PTY check cover this case; patch
-publication is pending. Normal home-directory protections for mutations remain.
-
-[Source CI](https://github.com/wckdboy/axit/actions/runs/40164317370) passed 83 Rust
-tests and 103 MCP/ACP checks on macOS, and 80 Rust tests and 104 protocol checks on
+[Source CI](https://github.com/wckdboy/axit/actions/runs/40165643707) passed 84 Rust
+tests and 103 MCP/ACP checks on macOS, and 81 Rust tests and 104 protocol checks on
 Linux, plus installer/tamper, PTY/native-manager fixtures and site checks. The
-[0.4.0 release workflow](https://github.com/wckdboy/axit/actions/runs/40164785649)
-built and checked all four platform packages. The published Intel Mac package also
-passed protocol, installer and PTY checks through Rosetta. Production desktop,
-mobile and dark browser checks pass; the favicon and installer mirrors match.
+[release workflow](https://github.com/wckdboy/axit/actions/runs/40165943269) built
+and checked all four platform packages. Public archives match SHA256SUMS and
+GitHub asset digests. Intel Mac protocol, installer and PTY checks pass through
+Rosetta; the Apple Silicon installer upgrade preserves the existing index and
+preferences. Production desktop, mobile and dark browser checks pass.
+[VALIDATION.json](https://github.com/wckdboy/axit/releases/download/v0.4.1/VALIDATION.json)
+records package, installation and deployment evidence.
 
 The full application-manager CodeRabbit CLI review and final UI follow-up each
-reported zero findings after the earlier issues were fixed. Its late GitHub finding
-about eager HOME lookup is addressed by the 0.4.1 candidate. The CLI reached its
-included-review limit on that patch; GitHub review and CI continue independently.
+reported zero findings after fixes. The patch addresses its late GitHub HOME
+finding with regressions. Its separate CLI re-review hit the included quota;
+the patch is covered by CI and the review history in [PR #7](https://github.com/wckdboy/axit/pull/7).
 
-Next in Plane: incremental filesystem updates (`AXIT-5`), bounded pagination
-beyond 1,000 results (`AXIT-6`) and native Linux distro ownership/removal (`AXIT-18`).
-These remain planned work. Application management (`AXIT-15`) remains in progress
-until the final local upgrade and release verification are complete.
+Application management (`AXIT-15`) is shipped. Next in Plane: incremental filesystem
+updates (`AXIT-5`), bounded pagination beyond 1,000 results (`AXIT-6`) and native Linux
+distro ownership/removal (`AXIT-18`). These remain planned work.
 
 ## Install
 
@@ -70,7 +68,7 @@ From a source checkout with Rust 1.88 or newer:
 sh install.sh --local
 ```
 
-Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.3.2` to pin
+Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.4.1` to pin
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 Renamed from SCRY: existing private indexes, cleanup preferences and the undo journal
