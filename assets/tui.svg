@@ -1,77 +1,87 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="684" viewBox="0 0 1448 884" role="img" aria-label="AXIT terminal storage browser"><title>AXIT terminal capture — temporary test fixtures</title><rect width="100%" height="100%" rx="16" fill="#0e1718"/>
 <rect x="24" y="24" width="1400" height="22" fill="#0e1718"/>
-<rect x="24" y="46" width="1400" height="22" fill="#0e1718"/>
-<rect x="24" y="68" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="68" width="90" height="22" fill="#d6f45b"/>
-<rect x="124" y="68" width="10" height="22" fill="#0e1718"/>
-<rect x="134" y="68" width="80" height="22" fill="#152224"/>
-<rect x="214" y="68" width="10" height="22" fill="#0e1718"/>
-<rect x="224" y="68" width="90" height="22" fill="#152224"/>
-<rect x="314" y="68" width="10" height="22" fill="#0e1718"/>
-<rect x="324" y="68" width="120" height="22" fill="#152224"/>
-<rect x="444" y="68" width="980" height="22" fill="#0e1718"/>
+<rect x="24" y="46" width="30" height="22" fill="#0e1718"/>
+<rect x="54" y="46" width="10" height="22" fill="#70c7e8"/>
+<rect x="64" y="46" width="10" height="22" fill="#99ada5"/>
+<rect x="74" y="46" width="20" height="22" fill="#e9f1de"/>
+<rect x="94" y="46" width="1330" height="22" fill="#0e1718"/>
+<rect x="24" y="68" width="20" height="22" fill="#0e1718"/>
+<rect x="44" y="68" width="20" height="22" fill="#d6f45b"/>
+<rect x="64" y="68" width="10" height="22" fill="#0e1718"/>
+<rect x="74" y="68" width="10" height="22" fill="#e9f1de"/>
+<rect x="84" y="68" width="1340" height="22" fill="#0e1718"/>
 <rect x="24" y="90" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="90" width="1380" height="22" fill="#152224"/>
-<rect x="1414" y="90" width="10" height="22" fill="#0e1718"/>
+<rect x="34" y="90" width="10" height="22" fill="#d6f45b"/>
+<rect x="44" y="90" width="1380" height="22" fill="#0e1718"/>
 <rect x="24" y="112" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="112" width="10" height="22" fill="#152224"/>
-<rect x="44" y="112" width="70" height="22" fill="#d6f45b"/>
-<rect x="114" y="112" width="1300" height="22" fill="#152224"/>
-<rect x="1414" y="112" width="10" height="22" fill="#0e1718"/>
+<rect x="34" y="112" width="90" height="22" fill="#d6f45b"/>
+<rect x="124" y="112" width="10" height="22" fill="#0e1718"/>
+<rect x="134" y="112" width="80" height="22" fill="#152224"/>
+<rect x="214" y="112" width="10" height="22" fill="#0e1718"/>
+<rect x="224" y="112" width="90" height="22" fill="#152224"/>
+<rect x="314" y="112" width="10" height="22" fill="#0e1718"/>
+<rect x="324" y="112" width="120" height="22" fill="#152224"/>
+<rect x="444" y="112" width="980" height="22" fill="#0e1718"/>
 <rect x="24" y="134" width="10" height="22" fill="#0e1718"/>
 <rect x="34" y="134" width="1380" height="22" fill="#152224"/>
 <rect x="1414" y="134" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="156" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="156" width="900" height="22" fill="#152224"/>
-<rect x="934" y="156" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="156" width="470" height="22" fill="#152224"/>
+<rect x="34" y="156" width="10" height="22" fill="#152224"/>
+<rect x="44" y="156" width="70" height="22" fill="#d6f45b"/>
+<rect x="114" y="156" width="1300" height="22" fill="#152224"/>
 <rect x="1414" y="156" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="178" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="178" width="900" height="22" fill="#152224"/>
-<rect x="934" y="178" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="178" width="470" height="22" fill="#152224"/>
+<rect x="34" y="178" width="1380" height="22" fill="#152224"/>
 <rect x="1414" y="178" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="200" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="200" width="10" height="22" fill="#152224"/>
-<rect x="44" y="200" width="880" height="22" fill="#2a4032"/>
-<rect x="924" y="200" width="10" height="22" fill="#152224"/>
-<rect x="934" y="200" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="200" width="470" height="22" fill="#152224"/>
+<rect x="34" y="200" width="1380" height="22" fill="#152224"/>
 <rect x="1414" y="200" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="222" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="222" width="900" height="22" fill="#152224"/>
-<rect x="934" y="222" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="222" width="470" height="22" fill="#152224"/>
+<rect x="34" y="222" width="860" height="22" fill="#152224"/>
+<rect x="894" y="222" width="300" height="22" fill="#d6f45b"/>
+<rect x="1194" y="222" width="150" height="22" fill="#2c3047"/>
+<rect x="1344" y="222" width="60" height="22" fill="#20343e"/>
+<rect x="1404" y="222" width="10" height="22" fill="#152224"/>
 <rect x="1414" y="222" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="244" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="244" width="900" height="22" fill="#152224"/>
-<rect x="934" y="244" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="244" width="470" height="22" fill="#152224"/>
+<rect x="34" y="244" width="860" height="22" fill="#152224"/>
+<rect x="894" y="244" width="300" height="22" fill="#d6f45b"/>
+<rect x="1194" y="244" width="150" height="22" fill="#2c3047"/>
+<rect x="1344" y="244" width="60" height="22" fill="#20343e"/>
+<rect x="1404" y="244" width="10" height="22" fill="#152224"/>
 <rect x="1414" y="244" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="266" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="266" width="900" height="22" fill="#152224"/>
-<rect x="934" y="266" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="266" width="470" height="22" fill="#152224"/>
+<rect x="34" y="266" width="860" height="22" fill="#152224"/>
+<rect x="894" y="266" width="300" height="22" fill="#d6f45b"/>
+<rect x="1194" y="266" width="150" height="22" fill="#2c3047"/>
+<rect x="1344" y="266" width="60" height="22" fill="#3c2f35"/>
+<rect x="1404" y="266" width="10" height="22" fill="#152224"/>
 <rect x="1414" y="266" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="288" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="288" width="900" height="22" fill="#152224"/>
-<rect x="934" y="288" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="288" width="470" height="22" fill="#152224"/>
+<rect x="34" y="288" width="860" height="22" fill="#152224"/>
+<rect x="894" y="288" width="300" height="22" fill="#d6f45b"/>
+<rect x="1194" y="288" width="150" height="22" fill="#2c3047"/>
+<rect x="1344" y="288" width="60" height="22" fill="#3c2f35"/>
+<rect x="1404" y="288" width="10" height="22" fill="#152224"/>
 <rect x="1414" y="288" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="310" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="310" width="900" height="22" fill="#152224"/>
-<rect x="934" y="310" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="310" width="470" height="22" fill="#152224"/>
+<rect x="34" y="310" width="860" height="22" fill="#152224"/>
+<rect x="894" y="310" width="300" height="22" fill="#d6f45b"/>
+<rect x="1194" y="310" width="90" height="22" fill="#2c3047"/>
+<rect x="1284" y="310" width="60" height="22" fill="#20343e"/>
+<rect x="1344" y="310" width="60" height="22" fill="#3c2f35"/>
+<rect x="1404" y="310" width="10" height="22" fill="#152224"/>
 <rect x="1414" y="310" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="332" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="332" width="900" height="22" fill="#152224"/>
-<rect x="934" y="332" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="332" width="470" height="22" fill="#152224"/>
+<rect x="34" y="332" width="860" height="22" fill="#152224"/>
+<rect x="894" y="332" width="300" height="22" fill="#d6f45b"/>
+<rect x="1194" y="332" width="90" height="22" fill="#2c3047"/>
+<rect x="1284" y="332" width="60" height="22" fill="#20343e"/>
+<rect x="1344" y="332" width="60" height="22" fill="#3c2f35"/>
+<rect x="1404" y="332" width="10" height="22" fill="#152224"/>
 <rect x="1414" y="332" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="354" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="354" width="900" height="22" fill="#152224"/>
-<rect x="934" y="354" width="10" height="22" fill="#0e1718"/>
-<rect x="944" y="354" width="470" height="22" fill="#152224"/>
+<rect x="34" y="354" width="1380" height="22" fill="#152224"/>
 <rect x="1414" y="354" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="376" width="10" height="22" fill="#0e1718"/>
 <rect x="34" y="376" width="900" height="22" fill="#152224"/>
@@ -84,7 +94,9 @@
 <rect x="944" y="398" width="470" height="22" fill="#152224"/>
 <rect x="1414" y="398" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="420" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="420" width="900" height="22" fill="#152224"/>
+<rect x="34" y="420" width="10" height="22" fill="#152224"/>
+<rect x="44" y="420" width="880" height="22" fill="#2a4032"/>
+<rect x="924" y="420" width="10" height="22" fill="#152224"/>
 <rect x="934" y="420" width="10" height="22" fill="#0e1718"/>
 <rect x="944" y="420" width="470" height="22" fill="#152224"/>
 <rect x="1414" y="420" width="10" height="22" fill="#0e1718"/>
@@ -170,199 +182,206 @@
 <rect x="1414" y="772" width="10" height="22" fill="#0e1718"/>
 <rect x="24" y="794" width="1400" height="22" fill="#0e1718"/>
 <rect x="24" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="34" y="816" width="80" height="22" fill="#152224"/>
-<rect x="114" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="124" y="816" width="110" height="22" fill="#152224"/>
-<rect x="234" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="244" y="816" width="60" height="22" fill="#152224"/>
-<rect x="304" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="314" y="816" width="80" height="22" fill="#152224"/>
-<rect x="394" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="404" y="816" width="80" height="22" fill="#152224"/>
-<rect x="484" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="494" y="816" width="120" height="22" fill="#152224"/>
-<rect x="614" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="624" y="816" width="110" height="22" fill="#152224"/>
-<rect x="734" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="744" y="816" width="80" height="22" fill="#152224"/>
-<rect x="824" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="834" y="816" width="90" height="22" fill="#152224"/>
+<rect x="34" y="816" width="30" height="22" fill="#152224"/>
+<rect x="64" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="74" y="816" width="30" height="22" fill="#152224"/>
+<rect x="104" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="114" y="816" width="60" height="22" fill="#152224"/>
+<rect x="174" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="184" y="816" width="60" height="22" fill="#152224"/>
+<rect x="244" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="254" y="816" width="60" height="22" fill="#152224"/>
+<rect x="314" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="324" y="816" width="50" height="22" fill="#152224"/>
+<rect x="374" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="384" y="816" width="60" height="22" fill="#152224"/>
+<rect x="444" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="454" y="816" width="70" height="22" fill="#152224"/>
+<rect x="524" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="534" y="816" width="60" height="22" fill="#152224"/>
+<rect x="594" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="604" y="816" width="70" height="22" fill="#152224"/>
+<rect x="674" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="684" y="816" width="60" height="22" fill="#152224"/>
+<rect x="744" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="754" y="816" width="60" height="22" fill="#152224"/>
+<rect x="814" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="824" y="816" width="60" height="22" fill="#152224"/>
+<rect x="884" y="816" width="10" height="22" fill="#0e1718"/>
+<rect x="894" y="816" width="30" height="22" fill="#152224"/>
 <rect x="924" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="934" y="816" width="80" height="22" fill="#152224"/>
-<rect x="1014" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="1024" y="816" width="80" height="22" fill="#152224"/>
-<rect x="1104" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="1114" y="816" width="80" height="22" fill="#152224"/>
-<rect x="1194" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="1204" y="816" width="80" height="22" fill="#152224"/>
-<rect x="1284" y="816" width="10" height="22" fill="#0e1718"/>
-<rect x="1294" y="816" width="80" height="22" fill="#152224"/>
-<rect x="1374" y="816" width="50" height="22" fill="#0e1718"/>
+<rect x="934" y="816" width="60" height="22" fill="#152224"/>
+<rect x="994" y="816" width="430" height="22" fill="#0e1718"/>
 <rect x="24" y="838" width="1400" height="22" fill="#0e1718"/>
-<text xml:space="preserve" x="34" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="700" fill="#d6f45b"> ▰ AXIT</text>
-<text xml:space="preserve" x="114" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">WCKD.ai</text>
-<text xml:space="preserve" x="184" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#70c7e8">   50.1 GiB free</text>
-<text xml:space="preserve" x="344" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">   57 indexed</text>
-<text xml:space="preserve" x="34" y="84" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718"> 1 Space</text>
-<text xml:space="preserve" x="124" y="84" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  2 Find   3 Clean   4 Activity</text>
-<text xml:space="preserve" x="34" y="106" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">╭ Location · /private/tmp/axit-ui-wnerqz5f/files ────────────────────────────────────────────────────────────────────────────────────────╮</text>
-<text xml:space="preserve" x="34" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="44" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718"> Scope</text>
-<text xml:space="preserve" x="1404" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="150" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯</text>
-<text xml:space="preserve" x="34" y="172" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">╭ Files · 53 listed ─────────────────────────────────────────────────────────────────────╮</text>
-<text xml:space="preserve" x="944" y="172" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">╭ Inspect · Tab to focus ─────────────────────╮</text>
-<text xml:space="preserve" x="34" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">     Name                                                         On disk ↓   Modified</text>
-<text xml:space="preserve" x="924" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="944" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="954" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="700" fill="#d6f45b">downloads</text>
-<text xml:space="preserve" x="1404" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="216" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="216" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">›[ ] ▸ downloads                                                  64.0 KiB    now</text>
-<text xml:space="preserve" x="924" y="216" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="216" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<rect x="34" y="46" width="10" height="11.0" fill="#0e1718"/>
+<rect x="44" y="46" width="10" height="11.0" fill="#0e1718"/>
+<rect x="54" y="46" width="10" height="11.0" fill="#0e1718"/>
+<rect x="64" y="46" width="10" height="11.0" fill="#70c7e8"/>
+<rect x="74" y="46" width="10" height="11.0" fill="#e9f1de"/>
+<rect x="84" y="46" width="10" height="11.0" fill="#e9f1de"/>
+<text xml:space="preserve" x="114" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="700" fill="#d6f45b">AXIT</text>
+<text xml:space="preserve" x="164" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">WCKD.ai   57 indexed</text>
+<rect x="34" y="68" width="10" height="11.0" fill="#0e1718"/>
+<rect x="44" y="68" width="10" height="11.0" fill="#0e1718"/>
+<rect x="54" y="68" width="10" height="11.0" fill="#d6f45b"/>
+<rect x="64" y="68" width="10" height="11.0" fill="#d6f45b"/>
+<rect x="74" y="68" width="10" height="11.0" fill="#e9f1de"/>
+<rect x="84" y="68" width="10" height="11.0" fill="#e9f1de"/>
+<text xml:space="preserve" x="114" y="84" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#70c7e8">118.6 GiB available / 926.4 GiB</text>
+<rect x="34" y="90" width="10" height="11.0" fill="#d6f45b"/>
+<rect x="44" y="90" width="10" height="11.0" fill="#d6f45b"/>
+<rect x="54" y="90" width="10" height="11.0" fill="#0e1718"/>
+<rect x="64" y="90" width="10" height="11.0" fill="#0e1718"/>
+<rect x="74" y="90" width="10" height="11.0" fill="#0e1718"/>
+<rect x="84" y="90" width="10" height="11.0" fill="#0e1718"/>
+<text xml:space="preserve" x="114" y="106" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</text>
+<text xml:space="preserve" x="284" y="106" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#78ddb1">▰▰▰</text>
+<text xml:space="preserve" x="314" y="106" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5"> used / available</text>
+<text xml:space="preserve" x="34" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718"> 1 Space</text>
+<text xml:space="preserve" x="124" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  2 Find   3 Clean   4 Activity</text>
+<text xml:space="preserve" x="464" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">Ctrl-Tab next · F6 nav</text>
+<text xml:space="preserve" x="34" y="150" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">┌ Location · /private/tmp/axit-ui-dvafopbv/files ────────────────────────────────────────────────────────────────────────────────────────┐</text>
+<text xml:space="preserve" x="34" y="172" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="172" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718"> Scope</text>
+<text xml:space="preserve" x="1404" y="172" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="34" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">┌ Space map · g hide · click / double-click ─────────────────────────────────────────────────────────────────────────────────────────────┐</text>
+<text xml:space="preserve" x="34" y="216" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="216" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">288.0 KiB indexed · 53 items</text>
 <text xml:space="preserve" x="1404" y="216" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] ▸ documents                                                  20.0 KiB    now</text>
-<text xml:space="preserve" x="924" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="954" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">/private/tmp/axit-ui-wnerqz5f/files/downloads</text>
+<text xml:space="preserve" x="34" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">┌───────────────────────────────────────────────────────────────────────────────────┐┌────────────────────────────┐┌───────┐</text>
 <text xml:space="preserve" x="1404" y="238" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-000.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="34" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
+<text xml:space="preserve" x="54" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="700" fill="#e9f1de">Other items</text>
+<text xml:space="preserve" x="884" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">││</text>
+<text xml:space="preserve" x="904" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="700" fill="#0e1718">downloads</text>
+<text xml:space="preserve" x="994" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">                   ││</text>
+<text xml:space="preserve" x="1274" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
 <text xml:space="preserve" x="1404" y="260" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-001.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="954" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">On disk   64.0 KiB</text>
+<text xml:space="preserve" x="34" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
+<text xml:space="preserve" x="54" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">180.0 KiB · 62%</text>
+<text xml:space="preserve" x="884" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">││64.0 KiB · 22%              ││</text>
+<text xml:space="preserve" x="1274" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
 <text xml:space="preserve" x="1404" y="282" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-002.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="954" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">Type      Folder</text>
+<text xml:space="preserve" x="34" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
+<text xml:space="preserve" x="884" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">││                            ││</text>
+<text xml:space="preserve" x="1274" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
 <text xml:space="preserve" x="1404" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-003.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="954" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">Modified  now</text>
+<text xml:space="preserve" x="34" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
+<text xml:space="preserve" x="884" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">││                            ││</text>
+<text xml:space="preserve" x="1274" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">│</text>
 <text xml:space="preserve" x="1404" y="326" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="348" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="348" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-004.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="348" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="348" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="34" y="348" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="44" y="348" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#0e1718">└───────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────┘└───────┘</text>
 <text xml:space="preserve" x="1404" y="348" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="370" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="370" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-005.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="370" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="370" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="954" y="370" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">Trash and moves are reversible through Undo.</text>
-<text xml:space="preserve" x="1404" y="370" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="392" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="392" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-006.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="392" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
-<text xml:space="preserve" x="944" y="392" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="1404" y="392" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="34" y="370" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘</text>
+<text xml:space="preserve" x="34" y="392" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">┌ Files · 53 listed ─────────────────────────────────────────────────────────────────────┐</text>
+<text xml:space="preserve" x="944" y="392" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">┌ Inspect · Tab to focus ─────────────────────┐</text>
 <text xml:space="preserve" x="34" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-007.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
+<text xml:space="preserve" x="44" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">     Name                                                         On disk ↓   Modified</text>
+<text xml:space="preserve" x="924" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
 <text xml:space="preserve" x="944" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="954" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">p Show containing folder</text>
+<text xml:space="preserve" x="954" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="700" fill="#d6f45b">downloads</text>
 <text xml:space="preserve" x="1404" y="414" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="436" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="436" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-008.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="436" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">›[ ] ▸ downloads                                                  64.0 KiB    now</text>
 <text xml:space="preserve" x="924" y="436" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
 <text xml:space="preserve" x="944" y="436" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="436" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="458" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="458" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-009.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="458" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] ▸ documents                                                  20.0 KiB    now</text>
 <text xml:space="preserve" x="924" y="458" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
 <text xml:space="preserve" x="944" y="458" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="954" y="458" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">/private/tmp/axit-ui-dvafopbv/files/downloads</text>
 <text xml:space="preserve" x="1404" y="458" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-010.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-000.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
 <text xml:space="preserve" x="944" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-011.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
+<text xml:space="preserve" x="44" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-001.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="924" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
 <text xml:space="preserve" x="944" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="954" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">On disk   64.0 KiB</text>
 <text xml:space="preserve" x="1404" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-012.txt                                               4.0 KiB     now</text>
-<text xml:space="preserve" x="924" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
+<text xml:space="preserve" x="44" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-002.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="924" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">█</text>
 <text xml:space="preserve" x="944" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="954" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">Type      Folder</text>
 <text xml:space="preserve" x="1404" y="524" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="546" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="546" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-013.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="546" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-003.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="546" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="546" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="954" y="546" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">Modified  now</text>
 <text xml:space="preserve" x="1404" y="546" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="568" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="568" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-014.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="568" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-004.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="568" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="568" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="568" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="590" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="590" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-015.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="590" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-005.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="590" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="590" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="954" y="590" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">Trash and moves are reversible through Undo.</text>
 <text xml:space="preserve" x="1404" y="590" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="612" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="612" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-016.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="612" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-006.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="612" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="612" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="612" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="634" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="634" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-017.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="634" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-007.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="634" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="634" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
+<text xml:space="preserve" x="954" y="634" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">p Show containing folder</text>
 <text xml:space="preserve" x="1404" y="634" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="656" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="656" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-018.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="656" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-008.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="656" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="656" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="656" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="678" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="678" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-019.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="678" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-009.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="678" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="678" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="678" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="700" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="700" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-020.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="700" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-010.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="700" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="700" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="700" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="722" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="722" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-021.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="722" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-011.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="722" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="722" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="722" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="744" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="744" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-022.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="744" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-012.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="744" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="744" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="744" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="34" y="766" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">│</text>
-<text xml:space="preserve" x="44" y="766" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-023.txt                                               4.0 KiB     now</text>
+<text xml:space="preserve" x="44" y="766" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de"> [ ] · file-013.txt                                               4.0 KiB     now</text>
 <text xml:space="preserve" x="924" y="766" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">║</text>
 <text xml:space="preserve" x="944" y="766" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
 <text xml:space="preserve" x="1404" y="766" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">│</text>
-<text xml:space="preserve" x="34" y="788" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
-<text xml:space="preserve" x="944" y="788" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">╰─────────────────────────────────────────────╯</text>
+<text xml:space="preserve" x="34" y="788" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d6f45b">└────────────────────────────────────────────────────────────────────────────────────────┘</text>
+<text xml:space="preserve" x="944" y="788" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d">└─────────────────────────────────────────────┘</text>
 <text xml:space="preserve" x="34" y="810" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#99ada5">Ready · ? Help</text>
-<text xml:space="preserve" x="34" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d"> ← Back</text>
-<text xml:space="preserve" x="124" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d"> → Forward</text>
-<text xml:space="preserve" x="244" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d"> ↑ Up</text>
-<text xml:space="preserve" x="304" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  ↵ Open   / Find   Space Mark</text>
-<text xml:space="preserve" x="624" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#ff8174"> Del Trash</text>
-<text xml:space="preserve" x="734" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  m Move</text>
-<text xml:space="preserve" x="834" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#ff8174"> x Clean</text>
-<text xml:space="preserve" x="924" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  u Undo   r Scan   a Auto   ? Help   q Quit</text>
+<text xml:space="preserve" x="34" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d"> ←</text>
+<text xml:space="preserve" x="74" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d"> →</text>
+<text xml:space="preserve" x="114" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#50665d"> ↑ Up</text>
+<text xml:space="preserve" x="174" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  Open   Find   Map   Mark</text>
+<text xml:space="preserve" x="454" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#ff8174"> Trash</text>
+<text xml:space="preserve" x="524" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  Move</text>
+<text xml:space="preserve" x="604" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#ff8174"> Clean</text>
+<text xml:space="preserve" x="674" y="832" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e9f1de">  Undo   Scan   Auto   ?   Quit</text>
 </svg>

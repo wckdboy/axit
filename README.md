@@ -12,6 +12,9 @@ AXIT's **Lichen** palette uses `#D6F45B` for its identity and navigation, dark g
 ink for surfaces, cool blue for information and coral for destructive actions.
 [View the palette](assets/palette.svg). Runtime colors live in `src/tui/theme.rs`;
 text and action colors have automated contrast checks.
+The pixel axe in the app's top-left corner and website icon shares one 6×6 source
+mask, [assets/axe.txt](assets/axe.txt). Run `python3 scripts/render-logo.py` after
+editing it; site checks verify both generated SVGs match.
 
 ## Project status
 
@@ -29,6 +32,11 @@ Linux, plus installer/tamper, PTY and site checks. The
 four targets and tested the native Apple Silicon and Linux musl packages. The
 published Intel Mac package also passed protocol, installer and PTY checks through
 Rosetta. The README and Plane are updated alongside verified releases.
+
+The 0.3.0 release candidate adds a clickable storage map, explicit two-button
+confirmation, navigation focus and bounded background workers. Native validation
+currently passes 63 Rust tests, Clippy and the keyboard/mouse PTY suite. Packaged
+cross-platform checks and publication are still pending.
 
 Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
 for more than 1,000 search/folder results (`AXIT-6`). Both remain planned work.
@@ -54,7 +62,7 @@ From a source checkout with Rust 1.88 or newer:
 sh install.sh --local
 ```
 
-Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.2.0` to pin
+Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.3.0` to pin
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 Renamed from SCRY: existing private indexes, cleanup preferences and the undo journal
@@ -78,9 +86,15 @@ axit doctor                        # physical volumes and access failures
 
 TUI keys:
 
-- `1` Space, `2` Find, `3` Clean, `4` Activity; `Ctrl-Tab` cycles views.
-- `/` or `Ctrl-F` edits search; `Tab` / `Shift-Tab` cycles the query, results,
-  inspector and action buttons. Arrow keys choose a focused button; `Enter` activates it.
+- `1` Space, `2` Find, `3` Clean, `4` Activity keeps focus on navigation, so
+  repeated number shortcuts never get trapped in a text field. `Enter` enters a section.
+- `Alt-1…4` / `Ctrl-1…4` works even in text fields and dialogs. `Ctrl-Tab` /
+  `Ctrl-Shift-Tab` switches sections; `Ctrl-PageDown/Up` is an alternative for terminals
+  that intercept those keys. Switching sections safely cancels a pending review.
+- `F6` toggles navigation/content focus. In navigation, arrows choose a section and
+  `Enter` or `Down` enters it. `/` or `Ctrl-F` edits search; plain digits remain text there.
+- `Tab` / `Shift-Tab` cycles navigation, query, results, inspector and action buttons.
+  Arrow keys choose a focused button; `Enter` activates it.
 - Arrow keys or `j/k` navigate; `Home` / `End` jumps; `PageUp` / `PageDown` moves a page.
 - `Enter` opens a folder or inspects a file; `Backspace` goes up. `Alt-Left` /
   `Alt-Right` retraces history; `Alt-Up` goes up; `Alt-Home` returns to the scope root.
@@ -88,7 +102,7 @@ TUI keys:
   items, and `Esc` clears marks. Marks do not carry into another folder or query.
 - `Delete` / `t` previews Trash, `m` previews a move, `x` verifies a disposable cache.
 - `u` undoes a reversible move, `a` configures automatic cleanup, `r` rescans.
-- `s` sorts the current list; `p` shows an item's containing folder.
+- `s` sorts the current list; `p` shows an item's containing folder; `g` toggles the Space map.
 - `?` opens scrollable help; `q` / `Ctrl-Q` quits. An in-progress file operation
   finishes before exit; canceling a preview never changes files.
 
@@ -96,11 +110,12 @@ Mouse and touchpad:
 
 - Click tabs, breadcrumbs and action buttons. Buttons activate on release.
 - Click a row to focus it; double-click to open/inspect; right-click for item actions.
+- Click a storage-map tile to select its row; double-click a folder tile to enter it.
 - Click `[ ]` or Ctrl-click to toggle marks; Shift-click or drag selects a range.
 - Wheel / touchpad scrolling works in lists, the inspector and dialogs. The scrollbar
   supports clicking and dragging.
 - A deletion opens a reviewed plan with Cancel selected. Click its explicit action
-  button, or use Tab/Enter, or type its confirmation phrase. Escape cancels.
+  button, or use Tab then Enter. Escape cancels; typing and paste never confirm a dialog.
 
 Search and destination fields support cursor editing, Unicode, horizontal scrolling
 and bracketed paste. `Ctrl-A/E` moves to the start/end; `Ctrl-U` clears the field.
@@ -123,6 +138,9 @@ Size filters use allocated disk space. `gb` is decimal; `gib` is binary.
 ## Understand the numbers
 
 The volume meter reports filesystem free space separately from indexed folder totals.
+The Space map compares the largest eight direct children with all remaining children
+grouped as Other items. These are disjoint child estimates, with sizes taken from
+the index. Refresh after filesystem changes. `g` hides the map for a taller file list.
 Folder sizes include descendants, so parent and child rows overlap. Hardlinks count
 once; APFS clones can share blocks. Sparse files can have large logical sizes and
 small allocated sizes. An allocated-size estimate is not a promise of recovered space.
@@ -140,8 +158,9 @@ simulator images are separate views of backing files, rather than additional cap
 ## File operations
 
 Every operation starts with a preview. Nothing selected is moved or removed when a
-plan is created. In the TUI, confirm its explicit action button or type `CLEAN`,
-`TRASH` or `MOVE`. CLI and MCP calls require the exact confirmation phrase.
+plan is created. The TUI asks a specific question, shows paths and consequences,
+and defaults to Cancel. Confirm its explicit action button to proceed.
+CLI and MCP calls require the exact confirmation phrase (`CLEAN`, `TRASH` or `MOVE`).
 Plans expire after ten minutes and recheck file identity and active processes.
 An apply result with `needs_reconcile: true` identifies an error after paths changed.
 The TUI preserves a stale-index notice across restarts; refresh before retrying.
@@ -187,6 +206,10 @@ run; at most once a day. Entire home and disk roots are rejected. The TUI checks
 a minute while open. `auto --watch` runs in the foreground; no background service is
 installed automatically. Each automatic run uses the same verification rules and
 journal as manual cleanup.
+An empty or fully blocked check can retry after five minutes without consuming the
+daily allowance. A batch accepts at most 16 caches within the verified byte budget;
+oversized entries are skipped so smaller eligible caches can fit. Candidate metadata
+is reused, but every destructive claim gets fresh process and identity checks.
 
 ## MCP
 
@@ -233,7 +256,10 @@ not advertised or launched by this adapter.
 - Streaming filesystem traversal and fixed-width, little-endian records.
 - Original filenames and parent ids stored once; no database server or full-path index.
 - Immutable generations are memory mapped for search and published atomically.
-- Search runs outside the UI thread and cancels superseded queries.
+- One search worker and one listing worker run outside the UI thread. Superseded
+  requests are canceled and coalesced to the latest request.
+- A 32-entry generation-aware listing cache keeps folder revisits fast; cache
+  candidate hints are shared for each immutable index. Neither certifies deletion.
 - At most 1 GiB per index; refreshing keeps the previous generation plus up to
   2 GiB of temporary construction space until publication completes.
 - Previous complete index survives cancellation, invalid output or a failed rebuild.
@@ -253,6 +279,17 @@ representative searches took 20–181 ms (median of three runs each) over a pers
 MCP connection. The initial metadata scan took 297 seconds, including access errors
 and cloud-file timeouts. These are measurements from one busy machine; filesystem,
 query and storage performance affect results.
+
+A read-only 0.3 benchmark on the Mac's current 5.52-million-entry index found 1,208
+cache hints in 26 ms. Dispatching a cold folder load took 52 µs; section-switch
+handlers took at most 21 µs while that load ran. These measure metadata discovery
+and event dispatch, not complete frame latency. The benchmark reuses an existing
+index and never scans or mutates indexed files:
+
+```sh
+AXIT_BENCH_STATE=/path/to/existing/state cargo test --release --locked --jobs 2 \
+  benchmark_existing_index_navigation -- --ignored --nocapture
+```
 
 ## Build and verify
 

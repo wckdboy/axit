@@ -131,13 +131,18 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         assert 'AXIT' in app.content() and 'WCKD.ai' in app.content(),app.content()
         assert len({c.fg for row in app.screen.buffer.values() for c in row.values()})>=5,'Theme colors missing'
         app.snapshot('space')
+        app.send(b'1234')
+        app.wait(lambda:'Operations' in app.content())
+        app.send(b'\x1b[6;5~')  # Ctrl-PageDown wraps to Space without Escape.
+        app.wait(lambda:'Space map' in app.content())
         app.click('downloads',left=True,double=True)
         app.wait(lambda:'installer.dmg' in app.content())
         app.click('Scope',left=True)
         app.wait(lambda:'file-000.txt' in app.content())
-        before='\n'.join(line[:90] for line in app.screen.display[8:16])
-        app.wheel((20,10),count=7)
-        assert '\n'.join(line[:90] for line in app.screen.display[8:16])!=before,'Touchpad wheel did not scroll the table'
+        header=app.locate('Name',left=True)[1]
+        before='\n'.join(line[:90] for line in app.screen.display[header+1:-3])
+        app.wheel((20,header+2),count=7)
+        assert '\n'.join(line[:90] for line in app.screen.display[header+1:-3])!=before,'Touchpad wheel did not scroll the table'
         app.send(b'\x1b[F')
         assert 'file-049.txt' in app.content(),'End did not reveal the last row'
         app.send(b'\x06')  # Ctrl-F, even after scrolling.
@@ -153,7 +158,7 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         app.send(b'\x1b')
         app.send(b'\x1b[3~')
         app.wait(lambda:'Review plan' in app.content())
-        app.send(b'TRASH\r')
+        app.send(b'\t\r')  # Cancel starts focused; Tab selects the explicit action.
         app.wait(lambda:not (root/'documents/budget.txt').exists())
         assert len(list((recovery/'files').iterdir()))==1,'Trash escaped the private fixture'
         app.wait(lambda:'No matching files' in app.content())
@@ -163,14 +168,14 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         app.send(b'1')
         app.wait(lambda:'file-000.txt' in app.content())
         app.click('file-000.txt',left=True)
-        trash_button=app.locate('Del Trash')
+        trash_button=app.locate('Trash',last=True)
         app.send(app.packet(0,trash_button))
         assert 'Review plan' not in app.content(),'Button activated before release'
         app.send(app.packet(0,trash_button,True))
         app.wait(lambda:'Review plan' in app.content())
         app.click('Cancel')
         assert (root/'file-000.txt').exists(),'Cancel deleted the file'
-        app.click('Del Trash')
+        app.click('Trash',last=True)
         app.wait(lambda:'Review plan' in app.content())
         confirm=app.locate('Move to Trash',last=True)
         app.send(app.packet(0,confirm))
@@ -178,7 +183,7 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         app.send(app.packet(0,confirm,True))
         app.wait(lambda:not (root/'file-000.txt').exists())
         assert (root/'documents/budget.txt').exists() and (root/'downloads/installer.dmg').exists(),'Unselected fixture changed'
-        app.click('? Help')
+        app.click('?',last=True)
         app.wait(lambda:'AXIT / keyboard & mouse' in app.content())
         app.wheel((30,15),count=20)
         app.send(b'\x1b[F')

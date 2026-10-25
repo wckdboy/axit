@@ -12,6 +12,7 @@ use std::{
     },
     path::{Path, PathBuf},
     process::Command,
+    time::{Duration, Instant},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -93,6 +94,43 @@ pub struct Applied {
     /// A failed entry changed paths; refresh the index before retrying it.
     pub needs_reconcile: bool,
     pub note: String,
+}
+
+struct CleanChecks<C> {
+    capture: C,
+    recent: Option<(Instant, OpenFiles)>,
+}
+
+impl<C: FnMut() -> Result<OpenFiles>> CleanChecks<C> {
+    fn new(capture: C) -> Self {
+        Self {
+            capture,
+            recent: None,
+        }
+    }
+
+    // Reuse only the advisory precheck. The destructive boundary below is always fresh.
+    fn before(&mut self, path: &Path, project: Option<&Path>) -> Result<()> {
+        if let Some((time, open)) = &self.recent
+            && time.elapsed() <= Duration::from_millis(100)
+        {
+            ensure!(!open.in_use(path, project), "File or project is in use");
+        } else {
+            ensure!(
+                !(self.capture)()?.in_use(path, project),
+                "File or project is in use"
+            );
+        }
+        Ok(())
+    }
+
+    fn after_claim(&mut self, path: &Path, project: Option<&Path>) -> Result<()> {
+        let open = (self.capture)()?;
+        let active = open.in_use(path, project);
+        self.recent = Some((Instant::now(), open));
+        ensure!(!active, "Cache became active");
+        Ok(())
+    }
 }
 
 pub fn encode(path: &Path) -> String {
@@ -226,6 +264,17 @@ pub fn cache_candidate(index: &Index, entry: crate::index::Entry) -> bool {
     cache_kind(index.name(entry), parent).is_some()
 }
 
+/// Metadata-only hints, built once per immutable index. Execution always revalidates live paths.
+pub fn cache_candidates(index: &Index) -> &[u32] {
+    index.cache_candidates.get_or_init(|| {
+        (1..index.count)
+            .filter_map(|id| index.entry(id))
+            .filter(|e| e.is_dir() && e.allocated > 0 && cache_candidate(index, *e))
+            .map(|e| e.id)
+            .collect()
+    })
+}
+
 fn cache_kind(name: &[u8], parent: &[u8]) -> Option<&'static str> {
     if name == b"incremental"
         || (name == b"debug" && parent == b"target")
@@ -298,7 +347,7 @@ fn git_generated(path: &Path, project: &Path) -> Result<()> {
     Ok(())
 }
 
-fn cache_project(path: &Path) -> Result<Option<PathBuf>> {
+fn cache_scope(path: &Path) -> Result<Option<PathBuf>> {
     let label = cache_label(path).context("This location has no verified disposable-cache rule")?;
     if label.starts_with("Rust") {
         let target = path
@@ -316,7 +365,6 @@ fn cache_project(path: &Path) -> Result<Option<PathBuf>> {
             project.join("Cargo.toml").is_file(),
             "Shared external target: review manually"
         );
-        git_generated(path, project)?;
         Ok(Some(project.to_path_buf()))
     } else if label.starts_with("Android") || label.contains("Gradle") {
         let project = path
@@ -325,7 +373,6 @@ fn cache_project(path: &Path) -> Result<Option<PathBuf>> {
                 p.join("settings.gradle.kts").is_file() || p.join("settings.gradle").is_file()
             })
             .context("Gradle project marker missing")?;
-        git_generated(path, project)?;
         Ok(Some(project.to_path_buf()))
     } else {
         let allowed = crate::home()?
@@ -462,9 +509,26 @@ fn cache_fingerprint(root: &Path, min_age: i64) -> Result<(String, u64)> {
 pub fn plan(
     index: &Index,
     ids: &[u32],
+    action: Action,
+    state: &Path,
+    min_age: i64,
+) -> Result<Plan> {
+    plan_with_budget(index, ids, action, state, min_age, None)
+}
+
+#[derive(Clone, Copy)]
+struct PlanBudget {
+    bytes: u64,
+    entries: usize,
+}
+
+fn plan_with_budget(
+    index: &Index,
+    ids: &[u32],
     mut action: Action,
     state: &Path,
     min_age: i64,
+    budget: Option<PlanBudget>,
 ) -> Result<Plan> {
     ensure!(
         !ids.is_empty() && ids.len() <= 128,
@@ -514,7 +578,19 @@ pub fn plan(
         .map(|id| Ok((*id, index.path(*id)?)))
         .collect::<Result<_>>()?;
     paths.sort_unstable_by_key(|(_, p)| p.components().count());
+    if budget.is_some() {
+        paths.sort_unstable_by_key(|(id, p)| {
+            (
+                p.components().count(),
+                std::cmp::Reverse(index.entry(*id).map_or(0, |e| e.allocated)),
+                *id,
+            )
+        });
+    }
     for (id, path) in paths {
+        if budget.is_some_and(|b| plan.entries.len() >= b.entries || plan.total_bytes >= b.bytes) {
+            break;
+        }
         if plan
             .entries
             .iter()
@@ -534,11 +610,14 @@ pub fn plan(
                     m.is_dir(),
                     "Permanent cleanup applies only to verified cache directories"
                 );
-                let project = cache_project(&path)?;
+                let project = cache_scope(&path)?;
                 ensure!(
                     !open.in_use(&path, project.as_deref()),
                     "In use by a running process or build"
                 );
+                if let Some(project) = &project {
+                    git_generated(&path, project)?;
+                }
                 let (fingerprint, bytes) = cache_fingerprint(&path, min_age)?;
                 (
                     Some(fingerprint),
@@ -587,6 +666,13 @@ pub fn plan(
         };
         match inspect() {
             Ok(e) => {
+                if budget.is_some_and(|b| e.bytes > b.bytes.saturating_sub(plan.total_bytes)) {
+                    plan.blocked.push(Blocked {
+                        path: e.path,
+                        reason: "Exceeds the remaining automatic-cleanup budget".into(),
+                    });
+                    continue;
+                }
                 plan.total_bytes = plan.total_bytes.saturating_add(e.bytes);
                 plan.entries.push(e);
             }
@@ -820,6 +906,7 @@ fn apply_with_journal(
             "Moved without overwriting existing files. Undo is available.".into()
         },
     };
+    let mut process_checks = CleanChecks::new(OpenFiles::capture);
     for entry in &plan.entries {
         let mut changed = false;
         let mut execute = || -> Result<u64> {
@@ -829,16 +916,22 @@ fn apply_with_journal(
                 entry.identity.matches(&metadata),
                 "File changed since preview"
             );
-            let open = OpenFiles::capture()?;
             let project = if plan.action == Action::Clean {
-                cache_project(&path)?
+                cache_scope(&path)?
             } else {
                 None
             };
-            ensure!(
-                !open.in_use(&path, project.as_deref()),
-                "File or project is in use"
-            );
+            if plan.action == Action::Clean {
+                process_checks.before(&path, project.as_deref())?;
+                if let Some(project) = &project {
+                    git_generated(&path, project)?;
+                }
+            } else {
+                ensure!(
+                    !OpenFiles::capture()?.in_use(&path, None),
+                    "File or project is in use"
+                );
+            }
             if plan.action == Action::Clean {
                 let (fingerprint, _) = cache_fingerprint(&path, plan.minimum_age_secs)?;
                 ensure!(
@@ -851,7 +944,7 @@ fn apply_with_journal(
                     .join(format!(".axit-clean-{}-{}", plan.id, entry.id));
                 rename_exclusive(&path, &claimed)?;
                 changed = true;
-                let check = || -> Result<()> {
+                let mut check = || -> Result<()> {
                     let m = fs::symlink_metadata(&claimed)?;
                     ensure!(
                         m.ino() == entry.identity.inode && m.dev() == entry.identity.device,
@@ -862,10 +955,7 @@ fn apply_with_journal(
                         fresh == fingerprint,
                         "Cache contents changed during operation"
                     );
-                    ensure!(
-                        !OpenFiles::capture()?.in_use(&claimed, project.as_deref()),
-                        "Cache became active"
-                    );
+                    process_checks.after_claim(&claimed, project.as_deref())?;
                     Ok(())
                 };
                 if let Err(error) = check() {
@@ -1063,6 +1153,7 @@ pub struct AutoPolicy {
     pub below_free_bytes: u64,
     pub cooldown_secs: i64,
     pub last_run: i64,
+    pub last_checked: i64,
 }
 impl Default for AutoPolicy {
     fn default() -> Self {
@@ -1074,6 +1165,7 @@ impl Default for AutoPolicy {
             below_free_bytes: 20 * 1024 * 1024 * 1024,
             cooldown_secs: 86400,
             last_run: 0,
+            last_checked: 0,
         }
     }
 }
@@ -1116,63 +1208,197 @@ pub fn save_auto(state: &Path, policy: &AutoPolicy) -> Result<()> {
 }
 
 pub fn auto_run(state: &Path, index: &Index) -> Result<Option<Applied>> {
+    // Serialize the policy check and reservation across CLI/TUI/watch processes.
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(state.join("auto.lock"))?;
+    match fs2::FileExt::try_lock_exclusive(&lock) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) => return Err(error.into()),
+    }
     let mut policy = auto_policy(state)?;
-    if !policy.enabled || crate::unix_now() - policy.last_run < policy.cooldown_secs {
+    let now = crate::unix_now();
+    if !policy.enabled
+        || now.saturating_sub(policy.last_run) < policy.cooldown_secs
+        || now.saturating_sub(policy.last_checked) < 300
+    {
         return Ok(None);
     }
-    if crate::system::volume(&index.path(0)?)?.available >= policy.below_free_bytes {
+    let scope = index.path(0)?;
+    if crate::system::volume(&scope)?.available >= policy.below_free_bytes {
         return Ok(None);
     }
     let roots: Vec<_> = policy
         .roots
         .iter()
-        .map(|p| Path::new(p).canonicalize())
-        .collect::<std::io::Result<_>>()?;
+        .map(|p| crate::scoped_alias(&Path::new(p).canonicalize()?, &scope))
+        .collect::<Result<_>>()?;
+    let mut candidates: Vec<_> = cache_candidates(index)
+        .iter()
+        .copied()
+        .filter(|id| {
+            index.entry(*id).is_some_and(|e| {
+                e.allocated <= policy.max_bytes
+                    && now.saturating_sub(e.modified) >= i64::from(policy.minimum_age_days) * 86400
+            })
+        })
+        .collect();
+    candidates.sort_unstable_by_key(|id| {
+        (
+            std::cmp::Reverse(index.entry(*id).map_or(0, |e| e.allocated)),
+            *id,
+        )
+    });
     let mut ids = Vec::new();
-    let mut estimate = 0;
-    for id in 1..index.count {
-        let e = index.entry(id).context("Missing entry")?;
-        if !e.is_dir()
-            || e.allocated == 0
-            || e.allocated > policy.max_bytes.saturating_sub(estimate)
-        {
-            continue;
-        }
-        if !cache_candidate(index, e) {
-            continue;
-        }
+    for id in candidates {
         let path = index.path(id)?;
-        if roots.iter().any(|root| path.starts_with(root))
-            && !ids.iter().any(|parent| index.is_descendant(id, *parent))
-        {
+        if roots.iter().any(|root| path.starts_with(root)) {
             ids.push(id);
-            estimate += e.allocated;
         }
-        if ids.len() >= 16 {
+        if ids.len() >= 64 {
             break;
         }
     }
-    policy.last_run = crate::unix_now();
+    policy.last_checked = now;
     save_auto(state, &policy)?;
     if ids.is_empty() {
         return Ok(None);
     }
-    let plan = plan(
+    let plan = plan_with_budget(
         index,
         &ids,
         Action::Clean,
         state,
         policy.minimum_age_days as i64 * 86400,
+        Some(PlanBudget {
+            bytes: policy.max_bytes,
+            entries: 16,
+        }),
     )?;
-    if plan.entries.is_empty() || plan.total_bytes > policy.max_bytes {
-        return Ok(None);
+    if plan.entries.is_empty() {
+        return Ok(Some(Applied {
+            plan: plan.id,
+            completed: vec![],
+            blocked: plan.blocked,
+            allocated_removed: 0,
+            needs_reconcile: false,
+            note: "No eligible caches passed the current checks".into(),
+        }));
     }
-    Ok(Some(apply(state, &plan, "CLEAN")?))
+    ensure!(
+        plan.total_bytes <= policy.max_bytes,
+        "Automatic cleanup budget exceeded"
+    );
+    // Reserve the daily allowance durably before any mutation; errors retain it.
+    let previous_run = policy.last_run;
+    policy.last_run = now;
+    save_auto(state, &policy)?;
+    let result = apply(state, &plan, "CLEAN")?;
+    if result.completed.is_empty() && !result.needs_reconcile {
+        policy.last_run = previous_run;
+        save_auto(state, &policy)?;
+    }
+    Ok(Some(result))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_destructive_claim_gets_a_fresh_process_check() {
+        use std::{cell::Cell, rc::Rc};
+        let calls = Rc::new(Cell::new(0));
+        let count = calls.clone();
+        let mut checks = CleanChecks::new(move || {
+            count.set(count.get() + 1);
+            let mut open = OpenFiles::default();
+            open.paths.insert(PathBuf::from(if count.get() == 3 {
+                "/fixture/claimed/live"
+            } else {
+                "/unrelated"
+            }));
+            Ok(open)
+        });
+        checks.before(Path::new("/fixture/cache"), None).unwrap();
+        checks
+            .after_claim(Path::new("/fixture/claimed"), None)
+            .unwrap();
+        checks.before(Path::new("/fixture/cache"), None).unwrap();
+        assert_eq!(
+            calls.get(),
+            2,
+            "An immediate advisory precheck should reuse the prior snapshot"
+        );
+        assert!(
+            checks
+                .after_claim(Path::new("/fixture/claimed"), None)
+                .is_err()
+        );
+        assert_eq!(
+            calls.get(),
+            3,
+            "The final check must capture new active files"
+        );
+        checks.recent.as_mut().unwrap().0 = Instant::now() - Duration::from_secs(1);
+        checks.before(Path::new("/fixture/cache"), None).unwrap();
+        assert_eq!(calls.get(), 4, "Expired snapshots must not be reused");
+    }
+
+    #[test]
+    fn budgeted_plans_skip_large_entries_and_keep_the_fitting_ones() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap().join("files");
+        let state = root.with_file_name("state");
+        fs::create_dir_all(root.join("destination")).unwrap();
+        private_dir(&state).unwrap();
+        for (name, bytes) in [("large", 65536), ("small-a", 4096), ("small-b", 4096)] {
+            fs::write(root.join(name), vec![0; bytes]).unwrap();
+        }
+        let path = crate::index::scan(
+            &root,
+            &state,
+            std::sync::Arc::new(std::sync::Mutex::new(crate::index::Progress::default())),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+        let index = Index::open(&path).unwrap();
+        let ids: Vec<_> = ["large", "small-a", "small-b"]
+            .iter()
+            .map(|name| index.find_path(&root.join(name)).unwrap())
+            .collect();
+        let budget = ids[1..]
+            .iter()
+            .map(|id| index.entry(*id).unwrap().allocated)
+            .sum();
+        let result = plan_with_budget(
+            &index,
+            &ids,
+            Action::Move {
+                destination: root.join("destination").to_string_lossy().into(),
+            },
+            &state,
+            0,
+            Some(PlanBudget {
+                bytes: budget,
+                entries: 2,
+            }),
+        )
+        .unwrap();
+        assert_eq!(result.entries.len(), 2);
+        assert_eq!(result.total_bytes, budget);
+        assert!(result.entries.iter().all(|entry| entry.id != ids[0]));
+        assert!(
+            result
+                .blocked
+                .iter()
+                .any(|entry| entry.reason.contains("budget"))
+        );
+        assert!(root.join("large").exists() && root.join("small-a").exists());
+    }
 
     #[test]
     fn journal_failures_distinguish_unchanged_rejection_from_recoverable_move() {

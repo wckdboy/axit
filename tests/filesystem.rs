@@ -436,6 +436,107 @@ fn automatic_cleanup_only_removes_old_debug_cache_and_obeys_its_cooldown() {
 }
 
 #[test]
+fn an_empty_automatic_check_does_not_consume_the_daily_cleanup_allowance() {
+    let (_t, root, state, _cache) = rust_cache();
+    let index = scan(&root, &state);
+    let policy = ops::AutoPolicy {
+        enabled: true,
+        roots: vec![root.to_string_lossy().into()],
+        below_free_bytes: u64::MAX,
+        ..Default::default()
+    };
+    ops::save_auto(&state, &policy).unwrap();
+    assert!(ops::auto_run(&state, &index).unwrap().is_none());
+    let policy = ops::auto_policy(&state).unwrap();
+    assert_eq!(policy.last_run, 0);
+    assert!(policy.last_checked > 0);
+    assert!(root.join("source.rs").exists() && root.join("target/debug").exists());
+    assert!(ops::auto_run(&state, &index).unwrap().is_none());
+}
+
+#[test]
+fn cache_candidate_hints_are_reused_without_certifying_unverified_caches() {
+    let (_t, root, state) = fixture();
+    fs::create_dir_all(root.join("target/debug")).unwrap();
+    fs::write(root.join("target/debug/data"), b"fixture").unwrap();
+    let index = Arc::new(scan(&root, &state));
+    let candidates = ops::cache_candidates(&index);
+    assert_eq!(candidates.len(), 1);
+    let address = candidates.as_ptr() as usize;
+    let results: Vec<_> = (0..3)
+        .map(|_| {
+            let index = index.clone();
+            std::thread::spawn(move || ops::cache_candidates(&index).as_ptr() as usize)
+        })
+        .collect();
+    assert!(
+        results
+            .into_iter()
+            .all(|thread| thread.join().unwrap() == address)
+    );
+    let plan = ops::plan(&index, candidates, Action::Clean, &state, 0).unwrap();
+    assert!(plan.entries.is_empty());
+    assert!(root.join("target/debug/data").exists());
+}
+
+#[test]
+fn concurrent_automatic_checks_share_one_policy_reservation() {
+    let (_t, root, state) = fixture();
+    let index = scan(&root, &state);
+    let policy = ops::AutoPolicy {
+        enabled: true,
+        roots: vec![root.to_string_lossy().into()],
+        below_free_bytes: u64::MAX,
+        ..Default::default()
+    };
+    ops::save_auto(&state, &policy).unwrap();
+    let before = fs::read(state.join("auto.json")).unwrap();
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(state.join("auto.lock"))
+        .unwrap();
+    fs2::FileExt::try_lock_exclusive(&lock).unwrap();
+    assert!(ops::auto_run(&state, &index).unwrap().is_none());
+    assert_eq!(fs::read(state.join("auto.json")).unwrap(), before);
+    drop(lock);
+    assert!(ops::auto_run(&state, &index).unwrap().is_none());
+    assert!(ops::auto_policy(&state).unwrap().last_checked > 0);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn automatic_cleanup_accepts_logical_roots_for_a_data_volume_index() {
+    let (_t, root, state, cache) = rust_cache();
+    let old = fs::FileTimes::new()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 86400));
+    for path in [
+        cache.join("work-products.bin"),
+        cache.clone(),
+        root.join("target/debug"),
+    ] {
+        fs::File::open(path).unwrap().set_times(old).unwrap();
+    }
+    let alias = Path::new("/System/Volumes/Data").join(root.strip_prefix("/").unwrap());
+    let index = scan(&alias, &state);
+    ops::save_auto(
+        &state,
+        &ops::AutoPolicy {
+            enabled: true,
+            roots: vec![root.to_string_lossy().into()],
+            below_free_bytes: u64::MAX,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let result = ops::auto_run(&state, &index).unwrap().unwrap();
+    assert_eq!(result.completed.len(), 1, "{:?}", result.blocked);
+    assert!(!root.join("target/debug").exists());
+    assert!(root.join("source.rs").exists());
+}
+
+#[test]
 fn tui_renders_small_and_wide_terminals_without_panicking() {
     let (_t, root, state) = fixture();
     fs::write(root.join("hello.txt"), b"hello").unwrap();

@@ -1,4 +1,4 @@
-use super::navigation::{MENU, phrase};
+use super::navigation::MENU;
 use super::theme::*;
 use super::*;
 use ratatui::{
@@ -17,7 +17,7 @@ fn pane(title: impl Into<Line<'static>>, focused: bool) -> Block<'static> {
     Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(BorderType::Plain)
         .border_style(Style::default().fg(if focused { ACCENT } else { BORDER }))
         .style(Style::default().bg(PANEL).fg(FG))
 }
@@ -33,6 +33,8 @@ fn label(cmd: Command, compact: bool) -> &'static str {
         (Command::Open, false) => "↵ Open",
         (Command::Find, true) => "Find",
         (Command::Find, false) => "/ Find",
+        (Command::Map, true) => "Map",
+        (Command::Map, false) => "g Map",
         (Command::Select, true) => "Mark",
         (Command::Select, false) => "Space Mark",
         (Command::Trash, true) => "Trash",
@@ -54,13 +56,14 @@ fn label(cmd: Command, compact: bool) -> &'static str {
         _ => "Open",
     }
 }
-fn toolbar(width: u16) -> (Vec<(Command, Rect)>, u16) {
+fn toolbar(width: u16, height: u16) -> (Vec<(Command, Rect)>, u16, bool) {
     let commands = [
         Command::Back,
         Command::Forward,
         Command::Parent,
         Command::Open,
         Command::Find,
+        Command::Map,
         Command::Select,
         Command::Trash,
         Command::Move,
@@ -71,11 +74,33 @@ fn toolbar(width: u16) -> (Vec<(Command, Rect)>, u16) {
         Command::Help,
         Command::Quit,
     ];
-    let compact = width < 100;
+    let compact = width < 160 || height < 28;
     let mut x = 0;
     let mut y = 0;
     let mut result = Vec::new();
     for cmd in commands {
+        if (height < 20 || width < 60)
+            && !matches!(
+                cmd,
+                Command::Parent
+                    | Command::Open
+                    | Command::Trash
+                    | Command::Clean
+                    | Command::Undo
+                    | Command::Help
+            )
+        {
+            continue;
+        }
+        if height < 28
+            && width >= 60
+            && matches!(
+                cmd,
+                Command::Back | Command::Forward | Command::Open | Command::Quit
+            )
+        {
+            continue;
+        }
         let w = (label(cmd, compact).width() as u16 + 2).min(width);
         if x + w > width {
             x = 0;
@@ -84,7 +109,7 @@ fn toolbar(width: u16) -> (Vec<(Command, Rect)>, u16) {
         result.push((cmd, Rect::new(x, y, w, 1)));
         x += w + 1;
     }
-    (result, y + 1)
+    (result, y + 1, compact)
 }
 
 fn button(
@@ -99,9 +124,9 @@ fn button(
     let active = enabled && (focused || app.hover == Some(hit) || app.pressed == Some(hit));
     let danger = matches!(hit, Hit::Command(Command::Trash | Command::Clean))
         || (hit == Hit::ModalConfirm
-            && matches!(&app.modal,Some(Modal::Preview(plan,_)) if matches!(plan.action,Action::Trash|Action::Clean)));
+            && matches!(&app.modal,Some(Modal::Preview(plan)) if matches!(plan.action,Action::Trash|Action::Clean)));
     let accent = if danger { DANGER } else { ACCENT };
-    let style = Style::default()
+    let mut style = Style::default()
         .fg(if !enabled {
             BORDER
         } else if active {
@@ -112,7 +137,15 @@ fn button(
             FG
         })
         .bg(if active { accent } else { PANEL });
-    frame.render_widget(Paragraph::new(format!(" {text} ")).style(style), rect);
+    if focused && app.focus == Focus::Nav && matches!(hit, Hit::View(_)) {
+        style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+    }
+    let text = if matches!(hit, Hit::ModalCancel | Hit::ModalConfirm) {
+        format!("[ {text} ]")
+    } else {
+        format!(" {text} ")
+    };
+    frame.render_widget(Paragraph::new(text).style(style), rect);
     if enabled {
         app.ui.hits.push((rect, hit));
     }
@@ -130,36 +163,35 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         );
         return;
     }
-    let (buttons, footer_height) = toolbar(area.width.saturating_sub(2));
+    let (buttons, footer_height, compact_toolbar) =
+        toolbar(area.width.saturating_sub(2), area.height);
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
             Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(if app.view == View::Find { 3 } else { 2 }),
             Constraint::Min(3),
             Constraint::Length(1),
             Constraint::Length(footer_height),
         ])
         .margin(1)
         .split(area);
+    logo::draw(frame, layout[0]);
+    let text_area = Rect::new(
+        layout[0].x + 8,
+        layout[0].y,
+        layout[0].width.saturating_sub(8),
+        1,
+    );
     let mut brand = vec![
         Span::styled(
-            " ▰ AXIT ",
+            "AXIT ",
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         Span::styled("WCKD.ai", Style::default().fg(DIM)),
     ];
-    if let Ok(volume) = crate::system::volume(&app.root) {
-        brand.push(Span::styled(
-            format!("   {} free", bytes(volume.available)),
-            Style::default().fg(if volume.available < 20 * 1024 * 1024 * 1024 {
-                AMBER
-            } else {
-                INFO
-            }),
-        ));
-    }
+    let volume = crate::system::volume(&app.root).ok();
     if let Some(index) = &app.index
         && area.width >= 90
     {
@@ -168,7 +200,35 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Style::default().fg(DIM),
         ));
     }
-    frame.render_widget(Paragraph::new(Line::from(brand)), layout[0]);
+    frame.render_widget(Paragraph::new(Line::from(brand)), text_area);
+    if let Some(volume) = &volume {
+        let available = volume.available.min(volume.total);
+        frame.render_widget(
+            Paragraph::new(format!(
+                "{} available / {}",
+                bytes(available),
+                bytes(volume.total)
+            ))
+            .style(Style::default().fg(if available < 20 * 1024 * 1024 * 1024 {
+                AMBER
+            } else {
+                INFO
+            })),
+            Rect::new(text_area.x, text_area.y + 1, text_area.width, 1),
+        );
+        let width = 20.min(text_area.width.saturating_sub(16));
+        let used = (u128::from(width) * u128::from(volume.total.saturating_sub(available))
+            / u128::from(volume.total.max(1))) as usize;
+        let spans = vec![
+            Span::styled("▰".repeat(used), Style::default().fg(BORDER)),
+            Span::styled("▰".repeat(width as usize - used), Style::default().fg(MINT)),
+            Span::styled(" used / available", Style::default().fg(DIM)),
+        ];
+        frame.render_widget(
+            Paragraph::new(Line::from(spans)),
+            Rect::new(text_area.x, text_area.y + 2, text_area.width, 1),
+        );
+    }
 
     let mut x = layout[1].x;
     for (view, text) in [
@@ -188,6 +248,22 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             true,
         );
         x = rect.right() + 1;
+    }
+    if layout[1].right().saturating_sub(x) >= 25 {
+        frame.render_widget(
+            Paragraph::new(if app.focus == Focus::Nav {
+                "←→ sections · Enter opens"
+            } else {
+                "Ctrl-Tab next · F6 nav"
+            })
+            .style(Style::default().fg(DIM)),
+            Rect::new(
+                x + 1,
+                layout[1].y,
+                layout[1].right().saturating_sub(x + 1),
+                1,
+            ),
+        );
     }
     if app.view == View::Find {
         let block = pane(
@@ -259,6 +335,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         app.ui.hits.push((inner, Hit::Activity));
         app.ui.page = inner.height as usize;
     } else if app.index.is_some() {
+        let mut content = layout[3];
+        if app.view == View::Space && app.show_map && content.height >= 12 {
+            let height = if content.height >= 18 { 9 } else { 6 };
+            let chart = Rect::new(content.x, content.y, content.width, height);
+            usage::draw(frame, app, chart);
+            content.y += height;
+            content.height = content.height.saturating_sub(height);
+        }
         let columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(if area.width >= 110 {
@@ -267,7 +351,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 vec![Constraint::Percentage(100)]
             })
             .spacing(1)
-            .split(layout[3]);
+            .split(content);
         list(frame, app, columns[0]);
         if columns.len() > 1 {
             let block = pane(" Inspect · Tab to focus ", app.focus == Focus::Inspect);
@@ -327,7 +411,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             frame,
             app,
             rect,
-            label(cmd, area.width.saturating_sub(2) < 100),
+            label(cmd, compact_toolbar),
             Hit::Command(cmd),
             app.focus == Focus::Actions && app.action_index == i,
             enabled,
@@ -340,7 +424,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 fn breadcrumbs(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = format!(" Location · {} ", crate::text(&app.root));
-    let block = pane(title, false);
+    let block = pane(title, false).borders(Borders::TOP | Borders::LEFT | Borders::RIGHT);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let Some(index) = app.index.clone() else {
@@ -416,33 +500,38 @@ fn breadcrumbs(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn list(frame: &mut Frame, app: &mut App, area: Rect) {
     let index = app.index.clone().unwrap();
-    let title = match app.view {
-        View::Find => {
-            if app.searching {
-                " Searching… ".into()
-            } else {
-                format!(
-                    " {} {} · {:.0} ms · {} listed ",
-                    app.matched,
-                    if app.matched == 1 { "match" } else { "matches" },
-                    app.search_ms,
-                    app.ids.len()
-                )
+    let title = if app.listing {
+        " Loading indexed items… · navigation stays available ".to_string()
+    } else {
+        match app.view {
+            View::Find => {
+                if app.searching {
+                    " Searching… ".into()
+                } else {
+                    format!(
+                        " {} {} · {:.0} ms · {} listed ",
+                        app.matched,
+                        if app.matched == 1 { "match" } else { "matches" },
+                        app.search_ms,
+                        app.ids.len()
+                    )
+                }
             }
+            View::Clean => format!(
+                " Caches · {} of {} candidates · estimates ",
+                app.ids.len(),
+                app.folder_count
+            ),
+            _ => format!(
+                " Files · {} listed{} ",
+                app.ids.len(),
+                if app.ids.len() == 1000 {
+                    " · largest 1000"
+                } else {
+                    ""
+                }
+            ),
         }
-        View::Clean => format!(
-            " {} cache candidates · nested totals overlap ",
-            app.ids.len()
-        ),
-        _ => format!(
-            " Files · {} listed{} ",
-            app.ids.len(),
-            if app.ids.len() == 1000 {
-                " · largest 1000"
-            } else {
-                ""
-            }
-        ),
     };
     let block = pane(title, app.focus == Focus::List);
     let inner = block.inner(area);
@@ -568,6 +657,8 @@ fn list(frame: &mut Frame, app: &mut App, area: Rect) {
             format!("Search could not run:\n\n{error}")
         } else if app.searching {
             "Searching…".into()
+        } else if app.listing {
+            "Reading indexed items… Navigation stays available.".into()
         } else if app.view == View::Find {
             "No matching files. Edit the query or press Esc.".into()
         } else if app.view == View::Clean {
@@ -699,12 +790,22 @@ fn scrollable(frame: &mut Frame, app: &mut App, lines: Vec<Line<'static>>, area:
 }
 
 fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
-    // A modal owns its hit map. Background controls cannot receive clicks through it.
-    app.ui.hits.clear();
-    let box_area = if matches!(app.modal, Some(Modal::Menu(_))) {
-        centered(area, 40, MENU.len() as u16 + 3)
+    // Only explicit section navigation remains available behind a dialog.
+    app.ui.hits.retain(|(_, hit)| matches!(hit, Hit::View(_)));
+    let container = if area.height >= 20 {
+        Rect::new(area.x, area.y + 5, area.width, area.height - 5)
     } else {
-        centered(area, 92, 32)
+        area
+    };
+    let box_area = if matches!(app.modal, Some(Modal::Menu(_))) {
+        centered(container, 40, MENU.len() as u16 + 3)
+    } else if let Some(Modal::Preview(plan)) = &app.modal {
+        let rows = (plan.entries.len() + plan.blocked.len()).min(7) as u16;
+        centered(container, 78, (10 + rows * 2).clamp(12, 24))
+    } else if matches!(app.modal, Some(Modal::Destination(_) | Modal::Auto)) {
+        centered(container, 76, 19)
+    } else {
+        centered(container, 92, 32)
     };
     frame.render_widget(Clear, box_area);
     let title = match &app.modal {
@@ -716,7 +817,10 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
         Some(Modal::Menu(_)) => " Actions ",
         _ => " AXIT ",
     };
-    let block = pane(title, true);
+    let mut block = pane(title, true);
+    if matches!(&app.modal,Some(Modal::Preview(plan)) if plan.action == Action::Clean) {
+        block = block.border_style(Style::default().fg(DANGER));
+    }
     let inside = block.inner(box_area);
     frame.render_widget(block, box_area);
     if let Some(Modal::Menu(selected)) = &app.modal {
@@ -746,115 +850,7 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
     if matches!(app.modal, Some(Modal::Preview(..))) {
-        let parts = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(4),
-        ])
-        .split(inside);
-        let (heading, consequence, confirm, eligible, lines) = {
-            let Some(Modal::Preview(plan, _)) = &app.modal else {
-                unreachable!()
-            };
-            let mut lines = Vec::new();
-            for entry in &plan.entries {
-                lines.push(Line::styled(
-                    format!("{} · {}", bytes(entry.bytes), entry.reason),
-                    Style::default().fg(MINT),
-                ));
-                lines.push(Line::raw(entry.path.clone()));
-                lines.push(Line::raw(""));
-            }
-            for blocked in &plan.blocked {
-                lines.push(Line::styled(
-                    format!("BLOCKED · {}", blocked.reason),
-                    Style::default().fg(AMBER),
-                ));
-                lines.push(Line::raw(blocked.path.clone()));
-                lines.push(Line::raw(""));
-            }
-            let (action, consequence, confirm) = match plan.action {
-                Action::Clean => (
-                    "Permanent cache cleanup",
-                    "Permanent · removed caches cannot be restored",
-                    "Clean permanently",
-                ),
-                Action::Trash => (
-                    "Move to Trash",
-                    "Reversible · empty Trash later to free space",
-                    "Move to Trash",
-                ),
-                Action::Move { .. } => (
-                    "Move files",
-                    "Reversible · never overwrites existing files",
-                    "Move files",
-                ),
-            };
-            (
-                vec![
-                    Line::styled(
-                        format!(
-                            "{action} · {} eligible · {} blocked",
-                            plan.entries.len(),
-                            plan.blocked.len()
-                        ),
-                        Style::default().fg(ACCENT),
-                    ),
-                    Line::raw(format!(
-                        "{} allocated · expires after 10 minutes",
-                        bytes(plan.total_bytes)
-                    )),
-                ],
-                consequence,
-                confirm,
-                !plan.entries.is_empty(),
-                lines,
-            )
-        };
-        frame.render_widget(Paragraph::new(heading), parts[0]);
-        scrollable(frame, app, lines, parts[1]);
-        let footer = parts[2];
-        frame.render_widget(
-            Paragraph::new(consequence).style(Style::default().fg(AMBER)),
-            Rect::new(footer.x, footer.y, footer.width, 1),
-        );
-        let mut cursor = None;
-        if let Some(Modal::Preview(plan, input)) = &mut app.modal {
-            let prefix = format!("{} > ", phrase(&plan.action));
-            let width = prefix.width() as u16;
-            frame.render_widget(
-                Paragraph::new(prefix).style(Style::default().fg(DIM)),
-                Rect::new(footer.x, footer.y + 1, width, 1),
-            );
-            let rect = Rect::new(
-                footer.x + width,
-                footer.y + 1,
-                footer.width.saturating_sub(width),
-                1,
-            );
-            let (text, column) = input.visible(rect.width);
-            frame.render_widget(Paragraph::new(text).style(Style::default().fg(FG)), rect);
-            app.ui.modal_input = rect;
-            app.ui.hits.push((rect, Hit::ModalInput));
-            cursor = Some((rect.x + column, rect.y));
-        }
-        modal_buttons(
-            frame,
-            app,
-            Rect::new(footer.x, footer.y + 2, footer.width, 1),
-            confirm,
-            eligible,
-        );
-        frame.render_widget(
-            Paragraph::new("Tab / click to confirm · ↑↓ / wheel review · Esc cancel")
-                .style(Style::default().fg(DIM)),
-            Rect::new(footer.x, footer.y + 3, footer.width, 1),
-        );
-        if app.modal_focus == 2
-            && let Some(cursor) = cursor
-        {
-            frame.set_cursor_position(cursor);
-        }
+        preview(frame, app, inside);
         return;
     }
     if matches!(app.modal, Some(Modal::Destination(_))) {
@@ -886,7 +882,11 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
         Some(Modal::Help) => (
             vec![
                 "1 Space · 2 Find · 3 Clean · 4 Activity · Ctrl-Tab cycles views",
-                "/ or Ctrl-F Search · Tab / Shift-Tab cycles focus",
+                "Ctrl-Tab / Ctrl-PgDn Next section · Ctrl-Shift-Tab / Ctrl-PgUp Previous",
+                "Alt-1…4 Switch anywhere, including dialogs · F6 Focus navigation",
+                "Navigation: ←→ choose a section · Enter / Down opens it",
+                "Space map: g shows/hides · click selects · double-click opens",
+                "/ or Ctrl-F Search · Tab / Shift-Tab cycles navigation and content",
                 "↑↓ / j k Move · Home / End First / last · PgUp / PgDn One page",
                 "Enter / → Open folder or inspect file · Backspace / ← Parent",
                 "Alt-← / Alt-→ History · Alt-↑ Parent · Alt-Home Scope root",
@@ -902,7 +902,8 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
                 "Wheel / touchpad scrolls the list, inspector or open dialog.",
                 "Click breadcrumbs, tabs and action buttons to navigate.",
                 "Dialogs: Tab chooses buttons; Enter activates; Esc cancels.",
-                "Confirm a reviewed plan with its button or type its phrase.",
+                "Confirmation: Cancel starts focused · Tab / ←→ chooses a button.",
+                "Enter activates the chosen button · Ctrl-Tab leaves without applying.",
                 "",
                 "Search editing: ←→, Home/End, Ctrl-A/E, Ctrl-U clear, Ctrl-K cut tail.",
                 "Filters: ext:pdf size:>1gib older:30d type:dir path:project",
@@ -985,8 +986,111 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
     );
 }
 
+fn preview(frame: &mut Frame, app: &mut App, inside: Rect) {
+    let Some(Modal::Preview(plan)) = &app.modal else {
+        return;
+    };
+    let count = plan.entries.len();
+    let noun = if count == 1 { "item" } else { "items" };
+    let (question, consequence, confirm) = match &plan.action {
+        Action::Trash => (
+            format!("Move {count} {noun} to Trash?"),
+            "Undo can restore them. Empty Trash later to free space.".to_string(),
+            "Move to Trash",
+        ),
+        Action::Clean => (
+            format!("Permanently delete {count} caches?"),
+            "Verified generated files only. This cannot be undone.".to_string(),
+            "Delete permanently",
+        ),
+        Action::Move { destination } => (
+            format!("Move {count} {noun}?"),
+            format!(
+                "To {} · existing files are never replaced.",
+                crate::clean(destination)
+            ),
+            "Move files",
+        ),
+    };
+    let question = if count == 0 {
+        "Nothing eligible to change".into()
+    } else {
+        question
+    };
+    let mut lines = Vec::new();
+    for entry in &plan.entries {
+        lines.push(Line::styled(entry.path.clone(), Style::default().fg(FG)));
+        lines.push(Line::styled(
+            format!("  {} · {}", bytes(entry.bytes), entry.reason),
+            Style::default().fg(DIM),
+        ));
+    }
+    for blocked in &plan.blocked {
+        lines.push(Line::styled(
+            blocked.path.clone(),
+            Style::default().fg(AMBER),
+        ));
+        lines.push(Line::styled(
+            format!("  Skipped · {}", blocked.reason),
+            Style::default().fg(DIM),
+        ));
+    }
+    let summary = format!(
+        "{} on disk · {} skipped",
+        bytes(plan.total_bytes),
+        plan.blocked.len()
+    );
+    let danger = plan.action == Action::Clean;
+    let parts = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Min(1),
+        Constraint::Length(3),
+    ])
+    .split(inside);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::styled(
+                question,
+                Style::default()
+                    .fg(if danger { DANGER } else { FG })
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Line::styled(summary, Style::default().fg(DIM)),
+        ]),
+        parts[0],
+    );
+    frame.render_widget(
+        Paragraph::new(consequence)
+            .wrap(Wrap { trim: false })
+            .style(Style::default().fg(if danger { DANGER } else { DIM })),
+        parts[1],
+    );
+    scrollable(frame, app, lines, parts[2]);
+    let footer = parts[3];
+    modal_buttons(
+        frame,
+        app,
+        Rect::new(footer.x, footer.y + 1, footer.width, 1),
+        confirm,
+        count > 0,
+    );
+    frame.render_widget(
+        Paragraph::new("Tab / ←→ buttons · Enter choose · Esc cancel")
+            .style(Style::default().fg(DIM)),
+        Rect::new(footer.x, footer.y + 2, footer.width, 1),
+    );
+}
+
 fn modal_buttons(frame: &mut Frame, app: &mut App, area: Rect, confirm: &str, enabled: bool) {
-    let cancel = Rect::new(area.x, area.y, 10.min(area.width), 1);
+    let confirm_width = if enabled {
+        (confirm.width() as u16 + 4).min(area.width.saturating_sub(12))
+    } else {
+        0
+    };
+    let cancel_width = if enabled { 10 } else { 9 }.min(area.width);
+    let total = cancel_width + if enabled { confirm_width + 2 } else { 0 };
+    let cancel = Rect::new(area.right().saturating_sub(total), area.y, cancel_width, 1);
     button(
         frame,
         app,
@@ -997,8 +1101,12 @@ fn modal_buttons(frame: &mut Frame, app: &mut App, area: Rect, confirm: &str, en
         true,
     );
     if enabled {
-        let width = (confirm.width() as u16 + 2).min(area.width.saturating_sub(cancel.width + 1));
-        let rect = Rect::new(area.right().saturating_sub(width), area.y, width, 1);
+        let rect = Rect::new(
+            area.right().saturating_sub(confirm_width),
+            area.y,
+            confirm_width,
+            1,
+        );
         button(
             frame,
             app,

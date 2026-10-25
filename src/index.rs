@@ -11,7 +11,7 @@ use std::{
     io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -96,6 +96,7 @@ pub struct Index {
     pub errors: u64,
     stamp: [u64; 5],
     names_start: usize,
+    pub(crate) cache_candidates: OnceLock<Vec<u32>>,
 }
 
 impl Index {
@@ -128,6 +129,7 @@ impl Index {
             "Truncated or malformed index"
         );
         let index = Self {
+            cache_candidates: OnceLock::new(),
             count: count as u32,
             started: u64_at(&map, 32) as i64,
             finished: u64_at(&map, 40) as i64,

@@ -1,10 +1,13 @@
 mod editor;
+mod logo;
 mod navigation;
 mod render;
+mod rows;
 mod state;
 #[cfg(test)]
 mod tests;
 mod theme;
+mod usage;
 
 use crate::{
     bytes,
@@ -45,6 +48,7 @@ enum View {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Focus {
+    Nav,
     Query,
     List,
     Inspect,
@@ -59,6 +63,7 @@ enum Command {
     Open,
     Reveal,
     Find,
+    Map,
     Select,
     Trash,
     Move,
@@ -74,6 +79,7 @@ enum Hit {
     View(View),
     Query,
     Row(usize),
+    Tile(u32),
     Check(usize),
     Sort(Sort),
     Command(Command),
@@ -115,7 +121,7 @@ impl Ui {
 enum Modal {
     Help,
     Inspect,
-    Preview(Box<Plan>, Editor),
+    Preview(Box<Plan>),
     Destination(Editor),
     Auto,
     Notice(String),
@@ -133,9 +139,10 @@ struct Location {
 enum Message {
     Scan(Result<PathBuf, String>),
     Search(u64, Result<query::SearchResult, String>),
+    Listing(u64, Option<rows::Data>, Option<u32>, usize),
     Plan(u64, Result<Plan, String>),
     Applied(Result<OperationUpdate, String>),
-    Auto(Result<Option<(String, Vec<u32>)>, String>),
+    Auto(Result<Option<OperationUpdate>, String>),
 }
 
 struct OperationUpdate {
@@ -159,6 +166,14 @@ pub struct App {
     anchor: Option<usize>,
     hidden: HashSet<u32>,
     needs_rescan: bool,
+    folder_count: u64,
+    folder_bytes: u64,
+    show_map: bool,
+    rows_cache: Arc<Mutex<rows::Cache>>,
+    rows_revision: u64,
+    listing: bool,
+    list_inflight: bool,
+    pending_listing: Option<(Option<u32>, usize)>,
     query: Editor,
     focus: Focus,
     action_index: usize,
@@ -190,6 +205,8 @@ pub struct App {
     plan_generation: u64,
     plan_inflight: bool,
     searching: bool,
+    search_inflight: bool,
+    search_pending: bool,
     search_error: Option<String>,
     matched: u64,
     search_ms: f64,
@@ -200,6 +217,12 @@ pub struct App {
 }
 
 impl App {
+    fn record(&mut self, text: String) {
+        self.activity.push(text);
+        if self.activity.len() > 256 {
+            self.activity.drain(..self.activity.len() - 256);
+        }
+    }
     pub fn new(root: PathBuf, state: PathBuf) -> Self {
         let (tx, rx) = mpsc::channel();
         let index = Index::open(&crate::index_path(&state))
@@ -218,6 +241,14 @@ impl App {
             anchor: None,
             hidden: HashSet::new(),
             needs_rescan: false,
+            folder_count: 0,
+            folder_bytes: 0,
+            show_map: true,
+            rows_cache: Arc::new(Mutex::new(rows::Cache::default())),
+            rows_revision: 0,
+            listing: false,
+            list_inflight: false,
+            pending_listing: None,
             query: Editor::default(),
             focus: Focus::List,
             action_index: 0,
@@ -249,6 +280,8 @@ impl App {
             plan_generation: 0,
             plan_inflight: false,
             searching: false,
+            search_inflight: false,
+            search_pending: false,
             search_error: None,
             matched: 0,
             search_ms: 0.,
@@ -298,6 +331,7 @@ impl App {
             && !self.plan_inflight
             && !self.auto_busy
             && !self.searching
+            && !self.listing
             && self.scan.is_none()
             && self.view != View::Activity
             && !self.chosen().is_empty()
@@ -311,7 +345,10 @@ impl App {
     fn invalidate_search(&mut self) {
         self.generation.fetch_add(1, Ordering::Relaxed);
         self.searching = false;
+        self.search_pending = false;
         self.restore_focus = None;
+        self.listing = false;
+        self.pending_listing = None;
     }
     fn clear_selection(&mut self) {
         self.selected.clear();
@@ -338,38 +375,10 @@ impl App {
             self.search();
             return;
         }
-        self.ids = if let Some(index) = &self.index {
-            match self.view {
-                View::Space => index
-                    .children(self.folder, 1000)
-                    .into_iter()
-                    .filter(|e| !index.is_hidden(e.id, &self.hidden))
-                    .map(|e| e.id)
-                    .collect(),
-                View::Clean => (1..index.count)
-                    .filter_map(|id| index.entry(id))
-                    .filter(|e| {
-                        e.is_dir()
-                            && e.allocated > 0
-                            && !index.is_hidden(e.id, &self.hidden)
-                            && ops::cache_candidate(index, *e)
-                    })
-                    .map(|e| e.id)
-                    .collect(),
-                _ => Vec::new(),
-            }
-        } else {
-            Vec::new()
-        };
-        self.sort_rows();
-        if self.view == View::Clean {
-            self.ids.truncate(1000);
-        }
-        let row = focused
-            .and_then(|id| self.ids.iter().position(|value| *value == id))
-            .unwrap_or(0);
-        self.select_row(row);
-        *self.table.offset_mut() = offset.min(self.ids.len().saturating_sub(1));
+        self.ids.clear();
+        self.folder_count = 0;
+        self.folder_bytes = 0;
+        self.listing(focused, offset);
     }
 
     fn sort_rows(&mut self) {
@@ -391,10 +400,24 @@ impl App {
         if self.view != View::Find {
             return;
         }
+        self.generation.fetch_add(1, Ordering::Relaxed);
+        self.searching = self.index.is_some();
+        self.search_error = None;
+        self.status = "Searching…".into();
+        self.search_pending = self.index.is_some();
+        self.start_search();
+    }
+
+    fn start_search(&mut self) {
+        if self.search_inflight || !self.search_pending || self.view != View::Find {
+            return;
+        }
         let Some(index) = self.index.clone() else {
             return;
         };
-        let n = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
+        self.search_pending = false;
+        self.search_inflight = true;
+        let n = self.generation.load(Ordering::Relaxed);
         let (input, sort, hidden, generation, tx) = (
             self.query.text.clone(),
             self.sort,
@@ -497,6 +520,16 @@ impl App {
         while let Ok(message) = self.rx.try_recv() {
             changed = true;
             match message {
+                Message::Listing(ticket, data, focused, offset) => {
+                    self.list_inflight = false;
+                    if ticket == self.generation.load(Ordering::Relaxed)
+                        && matches!(self.view, View::Space | View::Clean)
+                        && let Some(data) = data
+                    {
+                        self.apply_listing(data, focused, offset);
+                    }
+                    self.start_listing();
+                }
                 Message::Scan(result) => {
                     if let Some(handle) = self.scan.take() {
                         let _ = handle.join();
@@ -508,6 +541,7 @@ impl App {
                             let location = self.location();
                             self.index = Some(index);
                             self.hidden.clear();
+                            self.invalidate_rows();
                             self.needs_rescan = false;
                             self.save_overlay();
                             self.cancel_plan();
@@ -526,16 +560,18 @@ impl App {
                                 "Indexed {} entries · {} restricted/missing",
                                 index.count, index.errors
                             );
-                            self.activity.push(self.status.clone());
+                            self.record(self.status.clone());
                         }
                         Err(error) => {
                             self.status = error;
-                            self.activity.push(self.status.clone());
+                            self.record(self.status.clone());
                         }
                     }
                 }
                 Message::Search(n, result) => {
+                    self.search_inflight = false;
                     if n != self.generation.load(Ordering::Relaxed) || self.view != View::Find {
+                        self.start_search();
                         continue;
                     }
                     self.searching = false;
@@ -565,6 +601,7 @@ impl App {
                         }
                         _ => {}
                     }
+                    self.start_search();
                 }
                 Message::Plan(n, result) => {
                     self.plan_inflight = false;
@@ -574,9 +611,7 @@ impl App {
                     self.busy = false;
                     self.status = "Review the plan · no files changed".into();
                     match result {
-                        Ok(plan) => {
-                            self.open_modal(Modal::Preview(Box::new(plan), Editor::default()))
-                        }
+                        Ok(plan) => self.open_modal(Modal::Preview(Box::new(plan))),
                         Err(error) => self.open_modal(Modal::Notice(error)),
                     }
                 }
@@ -586,7 +621,7 @@ impl App {
                     match result {
                         Ok(update) => {
                             self.status = update.summary.clone();
-                            self.activity.push(update.summary.clone());
+                            self.record(update.summary.clone());
                             if update.uncertain
                                 || update.reindex
                                 || !update.hidden.is_empty()
@@ -595,6 +630,7 @@ impl App {
                                 self.needs_rescan = true;
                             }
                             self.hidden.extend(update.hidden);
+                            self.invalidate_rows();
                             self.clear_selection();
                             if let Some(id) = update.restored {
                                 self.hidden.remove(&id);
@@ -624,6 +660,7 @@ impl App {
                             self.status = error.clone();
                             // A filesystem change can succeed before journal persistence fails.
                             self.needs_rescan = true;
+                            self.invalidate_rows();
                             self.save_overlay();
                             self.open_modal(Modal::Notice(format!(
                                 "{error}\n\nSome paths may have changed. Press r to refresh the index."
@@ -634,22 +671,26 @@ impl App {
                 Message::Auto(result) => {
                     self.auto_busy = false;
                     match result {
-                        Ok(Some((message, hidden))) => {
-                            self.status = message.clone();
-                            self.activity.push(message);
-                            self.hidden.extend(hidden);
-                            self.needs_rescan = true;
-                            self.save_overlay();
-                            let focused = self.focused();
-                            let offset = self.table.offset();
-                            self.refresh(focused, offset);
+                        Ok(Some(update)) => {
+                            self.status = update.summary.clone();
+                            self.record(update.summary);
+                            if !update.hidden.is_empty() || update.uncertain {
+                                self.hidden.extend(update.hidden);
+                                self.invalidate_rows();
+                                self.needs_rescan = true;
+                                self.save_overlay();
+                                let focused = self.focused();
+                                let offset = self.table.offset();
+                                self.refresh(focused, offset);
+                            }
                         }
                         Ok(None) => {}
                         Err(error) => {
                             self.status = format!("Automatic cleanup stopped: {error}");
+                            self.invalidate_rows();
                             self.needs_rescan = true;
                             self.save_overlay();
-                            self.activity.push(self.status.clone());
+                            self.record(self.status.clone());
                         }
                     }
                 }
@@ -702,6 +743,7 @@ impl App {
             || self.scan.is_some()
             || self.modal.is_some()
             || self.searching
+            || self.listing
         {
             return;
         }
@@ -734,7 +776,14 @@ impl App {
                             .iter()
                             .filter_map(|p| index.find_path(std::path::Path::new(p)))
                             .collect();
-                        (message, hidden)
+                        OperationUpdate {
+                            summary: message,
+                            hidden,
+                            restored: None,
+                            reindex: false,
+                            uncertain: r.needs_reconcile,
+                            blocked: r.blocked,
+                        }
                     })
                 })
                 .map_err(|e| e.to_string());
@@ -779,7 +828,7 @@ pub fn run(root: PathBuf, state: PathBuf) -> Result<()> {
             if app.quit_after_operation && !app.applying && !app.auto_busy {
                 break;
             }
-            let refresh = if app.scan.is_some() || app.busy || app.searching {
+            let refresh = if app.scan.is_some() || app.busy || app.searching || app.listing {
                 Duration::from_millis(200)
             } else {
                 Duration::from_secs(2)

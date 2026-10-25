@@ -4,6 +4,46 @@ use crossterm::event::{
 };
 
 impl App {
+    fn dismiss_dialog(&mut self) {
+        let review = matches!(self.modal, Some(Modal::Preview(_) | Modal::Destination(_)));
+        self.modal = None;
+        self.ui.hits.clear();
+        self.pressed = None;
+        if review {
+            self.status = "Review canceled".into();
+        }
+    }
+
+    fn navigate(&mut self, view: View, nav_focus: bool) {
+        self.dismiss_dialog();
+        self.cancel_plan();
+        self.ui.hits.clear();
+        self.pressed = None;
+        self.hover = None;
+        self.drag_anchor = None;
+        self.drag_scrollbar = false;
+        self.set_view(view);
+        if nav_focus {
+            self.focus = Focus::Nav;
+        }
+    }
+
+    fn cycle_view(&mut self, delta: isize, nav_focus: bool) {
+        let tabs = [View::Space, View::Find, View::Clean, View::Activity];
+        let current = tabs.iter().position(|v| *v == self.view).unwrap_or(0);
+        self.navigate(
+            tabs[(current as isize + delta).rem_euclid(4) as usize],
+            nav_focus,
+        );
+    }
+
+    fn content_focus(&self) -> Focus {
+        if self.view == View::Find {
+            Focus::Query
+        } else {
+            Focus::List
+        }
+    }
     pub(super) fn location(&self) -> Location {
         Location {
             view: self.view,
@@ -54,6 +94,9 @@ impl App {
         if self.view != view {
             self.remember();
             self.view = view;
+            if !self.applying && !self.auto_busy {
+                self.status = "Ready".into();
+            }
             self.refresh(None, 0);
         }
         self.focus = if view == View::Find {
@@ -159,6 +202,7 @@ impl App {
                 self.view != View::Activity && self.focused().is_some() && !self.searching
             }
             Command::Trash | Command::Move | Command::Clean => self.mutable(),
+            Command::Map => self.view == View::Space,
             Command::Undo => !self.busy && !self.auto_busy && self.scan.is_none(),
             Command::Rescan => self.scan.is_none() && !self.applying && !self.auto_busy,
             Command::Auto => self.view == View::Space && !self.busy && !self.auto_busy,
@@ -216,6 +260,9 @@ impl App {
                 }
             }
             Command::Find => self.set_view(View::Find),
+            Command::Map => {
+                self.show_map = !self.show_map;
+            }
             Command::Select => {
                 if let Some(row) = self.table.selected() {
                     self.toggle(row);
@@ -273,24 +320,27 @@ impl App {
     fn change_sort(&mut self, sort: Sort) {
         let focused = self.focused();
         let offset = self.table.offset();
-        let selected = self.selected.clone();
         self.sort = sort;
         if self.view == View::Find {
             self.restore_focus = focused;
             self.search();
-        } else {
+        } else if self.listing {
             self.refresh(focused, offset);
-            self.selected = selected
-                .into_iter()
-                .filter(|id| self.ids.contains(id))
-                .collect();
+        } else {
+            self.sort_rows();
+            let row = focused
+                .and_then(|id| self.ids.iter().position(|value| *value == id))
+                .unwrap_or(0);
+            self.select_row(row);
+            *self.table.offset_mut() = offset;
+            self.cache_listing();
         }
     }
 
     fn tab(&mut self, reverse: bool) {
-        let mut fields = vec![Focus::List];
+        let mut fields = vec![Focus::Nav, Focus::List];
         if self.view == View::Find {
-            fields.insert(0, Focus::Query);
+            fields.insert(1, Focus::Query);
         }
         if self.ui.inspector.width > 0 {
             fields.push(Focus::Inspect);
@@ -343,10 +393,6 @@ impl App {
                     input.insert(&text);
                     self.modal_focus = 2;
                 }
-                Some(Modal::Preview(plan, input)) if !plan.entries.is_empty() => {
-                    input.insert(&text);
-                    self.modal_focus = 2;
-                }
                 None if self.focus == Focus::Query && self.query.insert(&text) => {
                     self.query_changed()
                 }
@@ -370,9 +416,38 @@ impl App {
         if ctrl && key.code == KeyCode::Char('q') {
             return self.quit();
         }
+        if ctrl
+            && matches!(
+                key.code,
+                KeyCode::Tab | KeyCode::BackTab | KeyCode::PageUp | KeyCode::PageDown
+            )
+        {
+            let reverse = shift || matches!(key.code, KeyCode::BackTab | KeyCode::PageUp);
+            self.cycle_view(if reverse { -1 } else { 1 }, false);
+            return false;
+        }
+        if key.code == KeyCode::F(6) {
+            if self.focus == Focus::Nav && self.modal.is_none() {
+                self.focus = self.content_focus();
+            } else {
+                self.navigate(self.view, true);
+            }
+            return false;
+        }
+        if let KeyCode::Char(digit @ '1'..='4') = key.code {
+            let modified = ctrl || alt;
+            let editing = matches!(self.modal, Some(Modal::Destination(_)))
+                || (self.modal.is_none() && self.focus == Focus::Query);
+            if modified || (!editing && !key.modifiers.contains(KeyModifiers::SUPER)) {
+                let view = [View::Space, View::Find, View::Clean, View::Activity]
+                    [digit as usize - '1' as usize];
+                self.navigate(view, !modified);
+                return false;
+            }
+        }
         if self.modal.is_some() {
             if ctrl && key.code == KeyCode::Char('c') {
-                self.modal = None;
+                self.dismiss_dialog();
                 return false;
             }
             self.modal_key(key);
@@ -398,20 +473,6 @@ impl App {
                 _ => {}
             }
         }
-        if ctrl && matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
-            let tabs = [View::Space, View::Find, View::Clean, View::Activity];
-            let current = tabs.iter().position(|v| *v == self.view).unwrap_or(0);
-            self.set_view(
-                tabs[(current
-                    + if shift || key.code == KeyCode::BackTab {
-                        3
-                    } else {
-                        1
-                    })
-                    % 4],
-            );
-            return false;
-        }
         if key.code == KeyCode::Tab || key.code == KeyCode::BackTab {
             self.tab(shift || key.code == KeyCode::BackTab);
             return false;
@@ -426,6 +487,38 @@ impl App {
                 }
             }
             return false;
+        }
+        if self.focus == Focus::Nav {
+            match key.code {
+                KeyCode::Left => {
+                    self.cycle_view(-1, true);
+                    return false;
+                }
+                KeyCode::Right => {
+                    self.cycle_view(1, true);
+                    return false;
+                }
+                KeyCode::Home => {
+                    self.navigate(View::Space, true);
+                    return false;
+                }
+                KeyCode::End => {
+                    self.navigate(View::Activity, true);
+                    return false;
+                }
+                KeyCode::Enter | KeyCode::Down | KeyCode::Char(' ') => {
+                    self.focus = self.content_focus();
+                    return false;
+                }
+                KeyCode::Up | KeyCode::Esc => {
+                    self.focus = self.content_focus();
+                    return false;
+                }
+                KeyCode::Char('j' | 'k') => {
+                    self.focus = Focus::List;
+                }
+                _ => {}
+            }
         }
         if self.focus == Focus::Actions {
             match key.code {
@@ -492,10 +585,7 @@ impl App {
             return false;
         }
         match key.code {
-            KeyCode::Char('1') => self.set_view(View::Space),
             KeyCode::Char('2' | '/') => self.set_view(View::Find),
-            KeyCode::Char('3') => self.set_view(View::Clean),
-            KeyCode::Char('4') => self.set_view(View::Activity),
             KeyCode::Char('q') => return self.command(Command::Quit),
             KeyCode::Char('?') | KeyCode::F(1) => {
                 self.command(Command::Help);
@@ -505,6 +595,9 @@ impl App {
             }
             KeyCode::Char('a') => {
                 self.command(Command::Auto);
+            }
+            KeyCode::Char('g') => {
+                self.command(Command::Map);
             }
             KeyCode::Char('x') => {
                 self.command(Command::Clean);
@@ -557,9 +650,7 @@ impl App {
 
     fn modal_key(&mut self, key: KeyEvent) {
         if key.code == KeyCode::Esc {
-            self.modal = None;
-            self.ui.hits.clear();
-            self.status = "Canceled · no files changed".into();
+            self.dismiss_dialog();
             return;
         }
         if let Some(Modal::Menu(selected)) = &mut self.modal {
@@ -579,7 +670,7 @@ impl App {
             let reverse =
                 key.code == KeyCode::BackTab || key.modifiers.contains(KeyModifiers::SHIFT);
             let fields = match &self.modal {
-                Some(Modal::Preview(plan, _)) if !plan.entries.is_empty() => 3,
+                Some(Modal::Preview(plan)) if !plan.entries.is_empty() => 2,
                 Some(Modal::Destination(_)) => 3,
                 Some(Modal::Auto) => 2,
                 _ => 1,
@@ -589,7 +680,7 @@ impl App {
         }
         if self.modal_focus < 2 && matches!(key.code, KeyCode::Left | KeyCode::Right) {
             if matches!(&self.modal, Some(Modal::Destination(_) | Modal::Auto))
-                || matches!(&self.modal,Some(Modal::Preview(plan,_)) if !plan.entries.is_empty())
+                || matches!(&self.modal,Some(Modal::Preview(plan)) if !plan.entries.is_empty())
             {
                 self.modal_focus = 1 - self.modal_focus;
             }
@@ -597,23 +688,11 @@ impl App {
         }
         if key.code == KeyCode::Enter {
             if self.modal_focus == 0 {
-                self.modal = None;
-                self.ui.hits.clear();
+                self.dismiss_dialog();
                 return;
             }
             if self.modal_focus == 1 {
                 self.confirm_modal();
-                return;
-            }
-            if let Some(Modal::Preview(plan, input)) = &self.modal {
-                if input.text == phrase(&plan.action) {
-                    self.confirm_modal();
-                } else {
-                    self.status = format!(
-                        "Type {} or choose the confirmation button",
-                        phrase(&plan.action)
-                    );
-                }
                 return;
             }
             if matches!(self.modal, Some(Modal::Destination(_))) {
@@ -643,16 +722,9 @@ impl App {
                 .min(self.ui.modal_max);
             return;
         }
-        match &mut self.modal {
-            Some(Modal::Preview(plan, input)) if !plan.entries.is_empty() => {
-                self.modal_focus = 2;
-                input.key(key);
-            }
-            Some(Modal::Destination(input)) => {
-                self.modal_focus = 2;
-                input.key(key);
-            }
-            _ => {}
+        if let Some(Modal::Destination(input)) = &mut self.modal {
+            self.modal_focus = 2;
+            input.key(key);
         }
     }
 
@@ -662,9 +734,9 @@ impl App {
         };
         self.ui.hits.clear();
         match modal {
-            Modal::Preview(plan, input) => {
+            Modal::Preview(plan) => {
                 if plan.entries.is_empty() {
-                    self.modal = Some(Modal::Preview(plan, input));
+                    self.modal = Some(Modal::Preview(plan));
                     return;
                 }
                 let confirmation = phrase(&plan.action).to_string();
@@ -735,12 +807,14 @@ impl App {
     }
 
     fn click_hit(&mut self, hit: Hit, column: u16) -> bool {
+        if let Hit::View(view) = hit {
+            self.navigate(view, false);
+            return false;
+        }
         if self.modal.is_some() {
             match hit {
                 Hit::ModalCancel => {
-                    self.modal = None;
-                    self.ui.hits.clear();
-                    self.status = "Canceled · no files changed".into();
+                    self.dismiss_dialog();
                 }
                 Hit::ModalConfirm => {
                     self.modal_focus = 1;
@@ -748,9 +822,7 @@ impl App {
                 }
                 Hit::ModalInput => {
                     self.modal_focus = 2;
-                    if let Some(Modal::Preview(_, input) | Modal::Destination(input)) =
-                        &mut self.modal
-                    {
+                    if let Some(Modal::Destination(input)) = &mut self.modal {
                         input.click(column.saturating_sub(self.ui.modal_input.x));
                     }
                 }
@@ -781,7 +853,13 @@ impl App {
     }
 
     fn mouse(&mut self, mouse: MouseEvent) -> bool {
-        let hit = self.ui.hit(mouse.column, mouse.row);
+        let hit = self
+            .ui
+            .hit(mouse.column, mouse.row)
+            .and_then(|hit| match hit {
+                Hit::Tile(id) => self.ids.iter().position(|value| *value == id).map(Hit::Row),
+                _ => Some(hit),
+            });
         if mouse.kind == MouseEventKind::Moved {
             self.hover = hit.filter(|h| !matches!(h, Hit::Row(_) | Hit::Check(_) | Hit::List));
             return false;
