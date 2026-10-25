@@ -1000,7 +1000,11 @@ fn result_windows_reach_every_item_preserve_identity_and_keep_global_map_targets
         plain(&mut app, KeyCode::Char('s'));
         settle(&mut app);
     }
+    // Sorting preserves the focused item; filesystem directory allocation can
+    // make that item the last Name result. Explicitly request the first window.
+    plain(&mut app, KeyCode::Home);
     settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 0);
     app.focus = Focus::List;
     let first = app.ids.clone();
     let marked = first[20];
@@ -1083,7 +1087,11 @@ fn a_map_target_outside_the_current_window_can_be_selected_and_inspected() {
         plain(&mut app, KeyCode::Char('s'));
         settle(&mut app);
     }
+    // Sorting preserves the focused item; filesystem directory allocation can
+    // make that item the last Name result. Explicitly request the first window.
+    plain(&mut app, KeyCode::Home);
     settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 0);
     let target = id(&app, "zz-largest.bin");
     assert!(!app.ids.contains(&target));
     render(&mut app, 140, 40);
