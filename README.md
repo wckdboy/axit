@@ -26,7 +26,8 @@ installation, related-data review and scoped MCP/ACP app inspection. It includes
 the Copper palette, shared split-pixel mark, arrow navigation and storage map.
 [axit.sh](https://axit.sh) is deployed through the standard [Wrangler workflow](site/README.md).
 
-The 0.4.1 candidate resolves explicit roots without requiring HOME to be set.
+The 0.4.1 candidate resolves explicit roots without requiring HOME to be set
+and prevents Ctrl-A from creating hidden file marks in the single-app selection view.
 An isolated CLI regression and a real Apps PTY check cover this case; patch
 publication is pending. Normal home-directory protections for mutations remain.
 
