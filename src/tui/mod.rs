@@ -2,6 +2,7 @@ mod applications;
 mod editor;
 mod logo;
 mod navigation;
+mod pages;
 mod render;
 mod rows;
 mod state;
@@ -80,6 +81,10 @@ enum Command {
     AppFiles,
     Leftovers,
     RefreshApps,
+    PreviousPage,
+    NextPage,
+    FirstPage,
+    LastPage,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Hit {
@@ -147,13 +152,20 @@ struct Location {
     query: Editor,
     sort: Sort,
     offset: usize,
+    page_cursor: Option<String>,
+    stamp: Option<[u64; 5]>,
 }
 enum Message {
     Apps(u64, applications::Loaded),
     AppFiles(u64, applications::Files),
     Scan(Result<PathBuf, String>),
     Search(u64, Result<query::SearchResult, String>),
-    Listing(u64, Option<rows::Data>, Option<u32>, usize),
+    Listing(
+        u64,
+        std::result::Result<Option<rows::Data>, String>,
+        Option<u32>,
+        usize,
+    ),
     Plan(u64, Result<Plan, String>),
     Applied(Result<OperationUpdate, String>),
     Auto(Result<Option<OperationUpdate>, String>),
@@ -170,6 +182,7 @@ struct OperationUpdate {
 }
 
 pub struct App {
+    pages: pages::State,
     apps: applications::State,
     pending_native: Option<crate::apps::ManagedPlan>,
     state: PathBuf,
@@ -255,6 +268,7 @@ impl App {
             .filter(|i| i.path(0).is_ok_and(|p| p == root))
             .map(Arc::new);
         let mut app = Self {
+            pages: Default::default(),
             apps: applications::State::new(context),
             pending_native: None,
             state,
@@ -349,11 +363,9 @@ impl App {
         if self.selected.is_empty() {
             self.focused().into_iter().collect()
         } else {
-            self.ids
-                .iter()
-                .copied()
-                .filter(|id| self.selected.contains(id))
-                .collect()
+            let mut ids: Vec<_> = self.selected.iter().copied().collect();
+            ids.sort_unstable();
+            ids
         }
     }
     fn mutable(&self) -> bool {
@@ -418,21 +430,6 @@ impl App {
         self.listing(focused, offset);
     }
 
-    fn sort_rows(&mut self) {
-        if let Some(index) = &self.index {
-            let sort = self.sort;
-            self.ids.sort_unstable_by(|a, b| {
-                let (a, b) = (index.entry(*a).unwrap(), index.entry(*b).unwrap());
-                let names = || index.name(a).cmp(index.name(b)).then(a.id.cmp(&b.id));
-                match sort {
-                    Sort::Name => names(),
-                    Sort::Size => b.allocated.cmp(&a.allocated).then_with(names),
-                    Sort::Modified => b.modified.cmp(&a.modified).then_with(names),
-                }
-            });
-        }
-    }
-
     fn search(&mut self) {
         if self.view != View::Find {
             return;
@@ -454,10 +451,16 @@ impl App {
         };
         self.search_pending = false;
         self.search_inflight = true;
+        let locate = self.restore_focus;
+        if let Some(data) = self.cached_page(&index, locate) {
+            self.accept_search(data);
+            return;
+        }
         let n = self.generation.load(Ordering::Relaxed);
-        let (input, sort, hidden, generation, tx) = (
+        let (input, sort, cursor, hidden, generation, tx) = (
             self.query.text.clone(),
             self.sort,
+            self.pages.cursor.clone(),
             self.hidden.clone(),
             self.generation.clone(),
             self.tx.clone(),
@@ -467,13 +470,47 @@ impl App {
         self.status = "Searching…".into();
         thread::spawn(move || {
             let result = query::Query::parse(&input)
-                .map(|q| query::search(&index, &q, sort, 1000, &hidden, Some((&generation, n))))
+                .and_then(|q| {
+                    let mut page = query::search_page(
+                        &index,
+                        &q,
+                        sort,
+                        crate::page::Request {
+                            limit: 1000,
+                            cursor: cursor.as_deref(),
+                        },
+                        &hidden,
+                        Some((&generation, n)),
+                    )?;
+                    if !page.canceled
+                        && cursor.is_none()
+                        && let Some(id) = locate
+                        && !page.ids.contains(&id)
+                    {
+                        let at = q.cursor_at(&index, sort, &hidden, id);
+                        if let Ok(found) = query::search_page(
+                            &index,
+                            &q,
+                            sort,
+                            crate::page::Request {
+                                limit: 1000,
+                                cursor: Some(&at),
+                            },
+                            &hidden,
+                            Some((&generation, n)),
+                        ) {
+                            page = found;
+                        }
+                    }
+                    Ok(page)
+                })
                 .map_err(|e| e.to_string());
             let _ = tx.send(Message::Search(n, result));
         });
     }
 
     fn query_changed(&mut self) {
+        self.pages = Default::default();
         self.clear_selection();
         self.ids.clear();
         self.table = TableState::default();
@@ -571,9 +608,8 @@ impl App {
                     self.list_inflight = false;
                     if ticket == self.generation.load(Ordering::Relaxed)
                         && matches!(self.view, View::Space | View::Clean)
-                        && let Some(data) = data
                     {
-                        self.apply_listing(data, focused, offset);
+                        self.receive_listing(data, focused, offset);
                     }
                     self.start_listing();
                 }
@@ -624,27 +660,13 @@ impl App {
                     self.searching = false;
                     match result {
                         Ok(r) if !r.canceled => {
-                            let focused = self.restore_focus.take().or_else(|| self.focused());
-                            self.ids = r.ids;
-                            self.matched = r.matched;
-                            self.search_ms = r.elapsed_ms;
-                            self.selected.retain(|id| self.ids.contains(id));
-                            let row = focused
-                                .and_then(|id| self.ids.iter().position(|value| *value == id))
-                                .unwrap_or(0);
-                            self.select_row(row);
-                            self.status = if self.ids.is_empty() {
-                                "No matches · edit the query or press Esc to browse".into()
-                            } else {
-                                "Ready".into()
-                            };
+                            if let Some(index) = &self.index {
+                                self.cache_page(index, self.restore_focus, r.clone());
+                            }
+                            self.accept_search(r);
                         }
                         Err(error) => {
-                            self.ids.clear();
-                            self.table.select(None);
-                            self.matched = 0;
-                            self.status = "Invalid query · edit the search field".into();
-                            self.search_error = Some(error);
+                            self.page_failed(error);
                         }
                         _ => {}
                     }
@@ -684,7 +706,7 @@ impl App {
                                 self.hidden.remove(&id);
                             }
                             self.save_overlay();
-                            let focused = self.focused();
+                            let focused = self.surviving_focus();
                             let offset = self.table.offset();
                             self.refresh(focused, offset);
                             if self.view == View::Apps {
@@ -730,7 +752,7 @@ impl App {
                                 self.invalidate_rows();
                                 self.needs_rescan = true;
                                 self.save_overlay();
-                                let focused = self.focused();
+                                let focused = self.surviving_focus();
                                 let offset = self.table.offset();
                                 self.refresh(focused, offset);
                             }

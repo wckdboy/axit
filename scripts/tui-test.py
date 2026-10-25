@@ -216,6 +216,48 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         app.wait(lambda:'Cannot locate application folders' in app.content())
         app.finish()
     finally:app.close()
+# Exercise windows beyond the old 1,000-row ceiling through a real terminal.
+with tempfile.TemporaryDirectory(prefix='axit-pages-ui-', dir='/tmp') as temporary:
+    base = Path(temporary).resolve()
+    root, state, recovery = base/'files', base/'state', base/'recovery'
+    root.mkdir()
+    for n in range(10057):
+        (root/f'file-{n:05}.txt').touch()
+    subprocess.run([binary, '--root', str(root), '--state-dir', str(state), 'scan'], capture_output=True, check=True)
+    app = Session(root, state, recovery, base)
+    try:
+        app.click('Name', left=True)
+        app.wait(lambda:'1–1000 of 10057' in app.content())
+        app.send(b' ')  # Mark an ID, then leave its visible window.
+        app.click('Next ]', last=True)
+        app.wait(lambda:'1001–2000 of 10057' in app.content())
+        app.send(b' ')
+        app.send(b'\x1b[3~')
+        app.wait(lambda:'Review plan' in app.content())
+        check_content = app.content()
+        assert 'file-00000.txt' in check_content and 'file-01000.txt' in check_content, check_content
+        app.send(b'\x1b')
+        app.send(b'\x1b[F')
+        app.wait(lambda:'9058–10057 of 10057' in app.content() and 'file-10056.txt' in app.content())
+        app.snapshot('pages-last')
+        app.send(b'\x1b[H')
+        app.wait(lambda:'1–1000 of 10057' in app.content())
+        app.send(b']')
+        app.wait(lambda:'1001–2000 of 10057' in app.content())
+        app.send(b'[')
+        app.wait(lambda:'1–1000 of 10057' in app.content())
+        app.send(b'\x1b[6~')
+        app.wait(lambda:'1001–2000 of 10057' in app.content())
+        app.send(b'\x06ext:txt')
+        app.wait(lambda:'10057 matches' in app.content())
+        app.send(b'\r\x1b[F')
+        app.wait(lambda:'10057 matches' in app.content() and 'file-10056.txt' in app.content())
+        app.resize(48,16)
+        assert 'Prev' in app.content() and 'Next' in app.content(), app.content()
+        app.snapshot('pages-minimum')
+        app.finish()
+    finally:
+        app.close()
 print('PTY checks passed: keyboard editing/paging, SGR mouse clicks/double-clicks, wheel/touchpad input, reviewed Trash, Undo, modal scrolling, resize, Ctrl-Q/SIGTERM and terminal-mode restoration')
 
 if len(sys.argv)>3:

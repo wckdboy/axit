@@ -64,6 +64,8 @@ impl App {
             query: self.query.clone(),
             sort: self.sort,
             offset: self.table.offset(),
+            page_cursor: self.pages.cursor.clone(),
+            stamp: self.index.as_ref().map(|i| i.stamp()),
         }
     }
 
@@ -72,6 +74,10 @@ impl App {
         self.query = location.query;
         self.sort = location.sort;
         self.focus = Focus::List;
+        self.pages = Default::default();
+        if self.index.as_ref().map(|i| i.stamp()) == location.stamp {
+            self.pages.cursor = location.page_cursor;
+        }
         let index = self.index.as_ref();
         self.folder = location
             .folder
@@ -106,6 +112,7 @@ impl App {
         if self.view != view {
             self.remember();
             self.view = view;
+            self.pages = Default::default();
             self.activity_scroll = 0;
             if !self.applying && !self.auto_busy {
                 self.status = "Ready".into();
@@ -137,6 +144,7 @@ impl App {
         self.remember();
         self.folder = id;
         self.view = View::Space;
+        self.pages = Default::default();
         self.focus = Focus::List;
         self.refresh(focused, 0);
     }
@@ -158,7 +166,30 @@ impl App {
     }
 
     fn move_cursor(&mut self, delta: isize, range: bool) {
+        if self.view != View::Apps && (self.searching || self.listing) {
+            return;
+        }
         let previous = self.table.selected().unwrap_or(0);
+        if matches!(self.view, View::Space | View::Find | View::Clean) {
+            let target = previous.saturating_add_signed(delta);
+            if delta > 0
+                && target >= self.ids.len()
+                && let Some(cursor) = self.pages.nav.next_cursor.clone()
+            {
+                self.change_page(
+                    Some(cursor),
+                    pages::Landing::Row(target.saturating_sub(self.ids.len())),
+                );
+                return;
+            }
+            if delta < 0
+                && previous < delta.unsigned_abs()
+                && let Some(cursor) = self.pages.nav.previous_cursor.clone()
+            {
+                self.change_page(Some(cursor), pages::Landing::Last);
+                return;
+            }
+        }
         let row = previous
             .saturating_add_signed(delta)
             .min(self.ids.len().saturating_sub(1));
@@ -171,18 +202,37 @@ impl App {
     }
 
     fn range(&mut self, anchor: usize, row: usize) {
+        if self.searching || self.listing {
+            return;
+        }
+        let items: HashSet<_> = self
+            .ids
+            .iter()
+            .copied()
+            .skip(anchor.min(row))
+            .take(anchor.abs_diff(row) + 1)
+            .collect();
+        if items.len() > 128 {
+            self.status = "Review up to 128 items at once · use a smaller range".into();
+            return;
+        }
         self.anchor = Some(anchor);
-        self.selected.clear();
-        self.selected.extend(
-            self.ids
-                .iter()
-                .copied()
-                .skip(anchor.min(row))
-                .take(anchor.abs_diff(row) + 1),
-        );
+        self.selected = items;
     }
 
     fn toggle(&mut self, row: usize) {
+        if self.searching || self.listing {
+            return;
+        }
+        if self
+            .ids
+            .get(row)
+            .is_some_and(|id| !self.selected.contains(id))
+            && self.selected.len() >= 128
+        {
+            self.status = "Review up to 128 items at once".into();
+            return;
+        }
         if let Some(id) = self.ids.get(row)
             && !self.selected.remove(id)
         {
@@ -193,7 +243,26 @@ impl App {
     }
 
     fn wheel(&mut self, delta: isize) {
+        if self.view != View::Apps && (self.searching || self.listing) {
+            return;
+        }
         let page = self.ui.page.max(1);
+        if matches!(self.view, View::Space | View::Find | View::Clean) {
+            if delta > 0
+                && self.table.offset() >= self.ids.len().saturating_sub(page)
+                && let Some(cursor) = self.pages.nav.next_cursor.clone()
+            {
+                self.change_page(Some(cursor), pages::Landing::First);
+                return;
+            }
+            if delta < 0
+                && self.table.offset() == 0
+                && let Some(cursor) = self.pages.nav.previous_cursor.clone()
+            {
+                self.change_page(Some(cursor), pages::Landing::Last);
+                return;
+            }
+        }
         let offset = self
             .table
             .offset()
@@ -214,13 +283,33 @@ impl App {
             return enabled;
         }
         match cmd {
+            Command::FirstPage => {
+                matches!(self.view, View::Space | View::Find | View::Clean)
+                    && !self.applying
+                    && !self.auto_busy
+            }
+            Command::PreviousPage | Command::NextPage | Command::LastPage => {
+                matches!(self.view, View::Space | View::Find | View::Clean)
+                    && !self.applying
+                    && !self.auto_busy
+                    && !self.listing
+                    && !self.searching
+                    && match cmd {
+                        Command::PreviousPage => self.pages.nav.previous_cursor.is_some(),
+                        Command::NextPage => self.pages.nav.next_cursor.is_some(),
+                        _ => self.pages.nav.last_cursor.is_some() || !self.ids.is_empty(),
+                    }
+            }
             Command::Back => !self.back.is_empty(),
             Command::Forward => !self.forward.is_empty(),
             Command::Parent => {
                 self.folder != 0 || (self.view == View::Find && self.focused().is_some())
             }
             Command::Open | Command::Reveal | Command::Select => {
-                self.view != View::Activity && self.focused().is_some() && !self.searching
+                self.view != View::Activity
+                    && self.focused().is_some()
+                    && !self.searching
+                    && !self.listing
             }
             Command::Trash | Command::Move | Command::Clean => self.mutable(),
             Command::Map => self.view == View::Space,
@@ -250,6 +339,9 @@ impl App {
             return false;
         }
         if self.app_command(cmd) {
+            return false;
+        }
+        if self.page_command(cmd) {
             return false;
         }
         match cmd {
@@ -343,27 +435,29 @@ impl App {
             | Command::AppFiles
             | Command::Leftovers
             | Command::RefreshApps => {}
+            Command::PreviousPage | Command::NextPage | Command::FirstPage | Command::LastPage => {}
         }
         false
     }
 
     fn change_sort(&mut self, sort: Sort) {
         let focused = self.focused();
-        let offset = self.table.offset();
+        self.cancel_plan();
+        self.invalidate_search();
+        self.pages = Default::default();
+        self.table = TableState::default();
+        self.anchor = None;
+        self.drag_anchor = None;
+        self.drag_scrollbar = false;
+        self.last_click = None;
+        self.pressed = None;
+        self.ui.hits.clear();
         self.sort = sort;
         if self.view == View::Find {
             self.restore_focus = focused;
             self.search();
-        } else if self.listing {
-            self.refresh(focused, offset);
         } else {
-            self.sort_rows();
-            let row = focused
-                .and_then(|id| self.ids.iter().position(|value| *value == id))
-                .unwrap_or(0);
-            self.select_row(row);
-            *self.table.offset_mut() = offset;
-            self.cache_listing();
+            self.listing(focused, 0);
         }
     }
 
@@ -656,7 +750,12 @@ impl App {
             }
         }
         if (ctrl || key.modifiers.contains(KeyModifiers::SUPER)) && key.code == KeyCode::Char('a') {
-            if self.view == View::Apps {
+            if self.view == View::Apps || self.searching || self.listing {
+                return false;
+            }
+            if self.ids.len() > 128 {
+                self.status =
+                    "Review up to 128 items at once · narrow the query or select a range".into();
                 return false;
             }
             self.selected = self.ids.iter().copied().collect();
@@ -705,8 +804,24 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => self.move_cursor(-1, shift),
             KeyCode::PageDown => self.move_cursor(self.ui.page.max(1) as isize, shift),
             KeyCode::PageUp => self.move_cursor(-(self.ui.page.max(1) as isize), shift),
+            KeyCode::Home
+                if !shift && matches!(self.view, View::Space | View::Find | View::Clean) =>
+            {
+                self.command(Command::FirstPage);
+            }
+            KeyCode::End
+                if !shift && matches!(self.view, View::Space | View::Find | View::Clean) =>
+            {
+                self.command(Command::LastPage);
+            }
             KeyCode::Home => self.move_cursor(-(self.ids.len() as isize), shift),
             KeyCode::End => self.move_cursor(self.ids.len() as isize, shift),
+            KeyCode::Char('[') => {
+                self.command(Command::PreviousPage);
+            }
+            KeyCode::Char(']') => {
+                self.command(Command::NextPage);
+            }
             KeyCode::Char(' ') => {
                 self.command(Command::Select);
             }
@@ -976,13 +1091,38 @@ impl App {
     }
 
     fn mouse(&mut self, mouse: MouseEvent) -> bool {
-        let hit = self
-            .ui
-            .hit(mouse.column, mouse.row)
-            .and_then(|hit| match hit {
-                Hit::Tile(id) => self.ids.iter().position(|value| *value == id).map(Hit::Row),
-                _ => Some(hit),
-            });
+        let hit = self.ui.hit(mouse.column, mouse.row);
+        if self.modal.is_none()
+            && let Some(Hit::Tile(id)) = hit
+        {
+            if mouse.kind == MouseEventKind::Down(MouseButton::Right) {
+                self.tile_action(id, false);
+                self.last_click = None;
+            }
+            if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                let double = self.last_click.is_some_and(|(old, time)| {
+                    old == id && time.elapsed() < Duration::from_millis(400)
+                });
+                self.focus = Focus::List;
+                if double {
+                    if self
+                        .index
+                        .as_ref()
+                        .and_then(|i| i.entry(id))
+                        .is_some_and(|e| e.is_dir() && !e.is_link())
+                    {
+                        self.folder(id, None);
+                    } else {
+                        self.tile_action(id, true);
+                    }
+                    self.last_click = None;
+                } else {
+                    self.focus_entry(id);
+                    self.last_click = Some((id, Instant::now()));
+                }
+            }
+            return false;
+        }
         if mouse.kind == MouseEventKind::Moved {
             self.hover = hit.filter(|h| !matches!(h, Hit::Row(_) | Hit::Check(_) | Hit::List));
             return false;
@@ -1054,6 +1194,11 @@ impl App {
                     } else {
                         None
                     };
+                    // wheel() can publish a different result window immediately.
+                    // Never apply the previous window's row anchor to its IDs.
+                    if self.drag_anchor != Some(anchor) {
+                        return false;
+                    }
                     if let Some(row) = row {
                         self.range(anchor, row);
                         self.select_row(row);
@@ -1084,6 +1229,9 @@ impl App {
             MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
         ) && let Some(Hit::Row(row) | Hit::Check(row)) = hit
         {
+            if self.view != View::Apps && (self.listing || self.searching) {
+                return false;
+            }
             if self.view == View::Apps {
                 let old = self.table.selected();
                 self.select_row(row);

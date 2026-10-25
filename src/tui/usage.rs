@@ -139,7 +139,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
     let Some(index) = app.index.clone() else {
         return;
     };
-    let parts = parts(&index, &app.ids, app.folder_bytes);
+    let parts = parts(&index, &app.pages.largest, app.folder_bytes);
     if parts.is_empty() {
         frame.render_widget(
             Paragraph::new(if app.listing {

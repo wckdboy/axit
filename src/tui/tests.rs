@@ -149,6 +149,7 @@ fn late_search_results_cannot_replace_a_folder_view() {
                 matched: 0,
                 elapsed_ms: 0.,
                 canceled: false,
+                ..Default::default()
             }),
         ))
         .unwrap();
@@ -765,6 +766,9 @@ fn listing_cache_invalidates_removed_rows_and_their_usage_totals() {
 #[test]
 fn map_tiles_select_and_open_the_same_items_as_the_list() {
     let (_temp, mut app) = fixture(8);
+    fs::write(app.root.join("folder/inside.txt"), vec![7; 65536]).unwrap();
+    app.scan();
+    settle(&mut app);
     let folder = id(&app, "folder");
     let output = render(&mut app, 140, 40);
     assert!(output.contains("Space map"));
@@ -986,4 +990,287 @@ fn apps_view_filters_reviews_data_and_keeps_navigation_and_confirmation_accessib
     key(&mut app, KeyCode::Up, KeyModifiers::CONTROL);
     assert_eq!(app.focus, Focus::Nav);
     assert!(app.modal.is_none() && path.exists() && personal.exists());
+}
+
+#[test]
+fn result_windows_reach_every_item_preserve_identity_and_keep_global_map_targets() {
+    let (_temp, mut app) = fixture(10057);
+    settle(&mut app);
+    while app.sort != Sort::Name {
+        plain(&mut app, KeyCode::Char('s'));
+        settle(&mut app);
+    }
+    // Sorting preserves the focused item; filesystem directory allocation can
+    // make that item the last Name result. Explicitly request the first window.
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 0);
+    app.focus = Focus::List;
+    let first = app.ids.clone();
+    let marked = first[20];
+    app.select_row(20);
+    plain(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.chosen(), vec![marked]);
+    let mut all = first.clone();
+    while app.pages.nav.next_cursor.is_some() {
+        plain(&mut app, KeyCode::Char(']'));
+        settle(&mut app);
+        assert!(app.selected.contains(&marked));
+        all.extend(&app.ids);
+    }
+    assert_eq!(all.len(), 10059);
+    assert_eq!(all.iter().collect::<HashSet<_>>().len(), 10059);
+    assert_eq!(
+        app.chosen(),
+        vec![marked],
+        "Marks remain bound to IDs, even off the visible window"
+    );
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    assert_eq!(app.ids, first);
+    assert_eq!(app.pages.nav.offset, 0);
+    plain(&mut app, KeyCode::End);
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 9059);
+    assert_eq!(app.table.selected(), Some(999));
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    render(&mut app, 140, 38);
+    click(&mut app, Hit::Command(Command::NextPage));
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 1000);
+    let second = app.ids.clone();
+    let second_focus = app.focused();
+    while app.sort != Sort::Modified {
+        plain(&mut app, KeyCode::Char('s'));
+        settle(&mut app);
+    }
+    settle(&mut app);
+    assert!(app.selected.contains(&marked));
+    plain(&mut app, KeyCode::Char('2'));
+    settle(&mut app);
+    key(&mut app, KeyCode::Left, KeyModifiers::ALT);
+    settle(&mut app);
+    assert_eq!(app.focused(), second_focus);
+    assert_eq!(app.sort, Sort::Modified);
+    assert!(app.selected.is_empty(), "Navigation clears marks");
+    assert_eq!(second.len(), 1000);
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+    assert!(app.selected.is_empty());
+    assert!(app.status.contains("128"));
+    plain(&mut app, KeyCode::Char('2'));
+    plain(&mut app, KeyCode::Down);
+    app.handle_event(Event::Paste("ext:txt".into()));
+    settle(&mut app);
+    plain(&mut app, KeyCode::Enter);
+    assert!(app.matched > 10000);
+    plain(&mut app, KeyCode::End);
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset + app.ids.len() as u64, app.matched);
+    let screen = render(&mut app, 48, 16);
+    assert!(screen.contains("Prev") && screen.contains("Next"));
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::Nav);
+}
+
+#[test]
+fn a_map_target_outside_the_current_window_can_be_selected_and_inspected() {
+    let (_temp, mut app) = fixture(4200);
+    fs::write(app.root.join("zz-largest.bin"), vec![7; 65536]).unwrap();
+    app.scan();
+    settle(&mut app);
+    while app.sort != Sort::Name {
+        plain(&mut app, KeyCode::Char('s'));
+        settle(&mut app);
+    }
+    // Sorting preserves the focused item; filesystem directory allocation can
+    // make that item the last Name result. Explicitly request the first window.
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 0);
+    let target = id(&app, "zz-largest.bin");
+    assert!(!app.ids.contains(&target));
+    render(&mut app, 140, 40);
+    let p = point(&app, Hit::Tile(target));
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Right),
+        p,
+        KeyModifiers::NONE,
+    );
+    settle(&mut app);
+    assert!(matches!(app.modal, Some(Modal::Menu(_))));
+    plain(&mut app, KeyCode::Esc);
+    assert_eq!(app.focused(), Some(target));
+    assert!(app.pages.nav.offset > 0);
+    render(&mut app, 140, 40);
+    click(&mut app, Hit::Tile(target));
+    click(&mut app, Hit::Tile(target));
+    settle(&mut app);
+    assert!(matches!(app.modal, Some(Modal::Inspect)));
+}
+
+#[test]
+fn mouse_wheel_crosses_windows_and_offscreen_marks_are_reviewed_by_identity() {
+    let (_temp, mut app) = fixture(2100);
+    settle(&mut app);
+    app.focus = Focus::List;
+    let first = app.ids[0];
+    plain(&mut app, KeyCode::Char(' '));
+    render(&mut app, 100, 30);
+    app.select_row(999);
+    render(&mut app, 100, 30);
+    let p = point(&app, Hit::Row(999));
+    mouse(&mut app, MouseEventKind::ScrollDown, p, KeyModifiers::NONE);
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 1000);
+    let second = app.ids[0];
+    plain(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.selected, HashSet::from([first, second]));
+    plain(&mut app, KeyCode::Delete);
+    settle(&mut app);
+    let Some(Modal::Preview(plan)) = &app.modal else {
+        panic!("Expected review");
+    };
+    let paths: HashSet<_> = plan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(
+        paths,
+        HashSet::from([
+            crate::text(&app.index.as_ref().unwrap().path(first).unwrap()),
+            crate::text(&app.index.as_ref().unwrap().path(second).unwrap()),
+        ])
+    );
+    assert_eq!(app.modal_focus, 0);
+    plain(&mut app, KeyCode::Esc);
+    assert!(app.root.read_dir().unwrap().count() >= 2100);
+    render(&mut app, 100, 30);
+    let p = point(&app, Hit::Row(0));
+    mouse(&mut app, MouseEventKind::ScrollUp, p, KeyModifiers::NONE);
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 0);
+    assert_eq!(app.table.selected(), Some(999));
+}
+
+#[test]
+fn window_requests_coalesce_and_malformed_cursors_can_restart_without_stale_results() {
+    let (_temp, mut app) = fixture(4200);
+    settle(&mut app);
+    app.focus = Focus::List;
+    plain(&mut app, KeyCode::Char(']'));
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 0);
+    assert!(!app.list_inflight && app.pending_listing.is_none());
+    app.change_page(Some("invalid".into()), pages::Landing::First);
+    settle(&mut app);
+    assert!(app.ids.is_empty() && app.search_error.is_some());
+    let screen = render(&mut app, 100, 30);
+    assert!(screen.contains("Page could not load"));
+    assert!(!screen.contains("no indexed children"));
+    plain(&mut app, KeyCode::Home);
+    settle(&mut app);
+    assert_eq!(app.ids.len(), 1000);
+    plain(&mut app, KeyCode::Char('/'));
+    app.handle_event(Event::Paste("ext:txt".into()));
+    settle(&mut app);
+    plain(&mut app, KeyCode::Enter);
+    plain(&mut app, KeyCode::Char(']'));
+    app.query = Editor::new("file-123.txt".into());
+    app.query_changed();
+    settle(&mut app);
+    assert_eq!(app.ids, vec![id(&app, "file-123.txt")]);
+    assert_eq!(app.pages.nav.offset, 0);
+    assert!(!app.search_inflight && !app.search_pending);
+}
+
+#[test]
+fn operation_overlay_changes_invalidate_history_tokens_and_restore_the_saved_file() {
+    let (_temp, mut app) = fixture(4200);
+    settle(&mut app);
+    app.focus = Focus::List;
+    plain(&mut app, KeyCode::Char(']'));
+    settle(&mut app);
+    let saved = app.focused();
+    assert!(app.pages.cursor.is_some());
+    plain(&mut app, KeyCode::Char('2'));
+    settle(&mut app);
+    assert!(app.back.last().unwrap().page_cursor.is_some());
+    let removed = id(&app, "file-000.txt");
+    assert_ne!(saved, Some(removed));
+    app.tx
+        .send(Message::Applied(Ok(OperationUpdate {
+            mutated: true,
+            summary: "Fixture file removed".into(),
+            hidden: vec![removed],
+            restored: None,
+            reindex: false,
+            uncertain: false,
+            blocked: vec![],
+        })))
+        .unwrap();
+    settle(&mut app);
+    assert!(
+        app.back
+            .iter()
+            .all(|location| location.page_cursor.is_none())
+    );
+    key(&mut app, KeyCode::Left, KeyModifiers::ALT);
+    settle(&mut app);
+    assert_eq!(app.view, View::Space);
+    assert_eq!(app.focused(), saved);
+    assert!(app.search_error.is_none());
+    assert!(!app.ids.contains(&removed));
+}
+
+#[test]
+fn dragging_past_a_window_boundary_preserves_marks_and_drops_old_row_anchors() {
+    let (_temp, mut app) = fixture(1057);
+    settle(&mut app);
+    app.select_row(999);
+    render(&mut app, 100, 30);
+    let marked = app.ids[999];
+    let p = point(&app, Hit::Row(999));
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        p,
+        KeyModifiers::CONTROL,
+    );
+    assert_eq!(app.drag_anchor, Some(999));
+    let outside = (p.0, app.ui.list.bottom());
+    mouse(
+        &mut app,
+        MouseEventKind::Drag(MouseButton::Left),
+        outside,
+        KeyModifiers::NONE,
+    );
+    settle(&mut app);
+    assert_eq!(app.pages.nav.offset, 1000);
+    assert_eq!(app.ids.len(), 59);
+    assert!(app.drag_anchor.is_none() && app.anchor.is_none());
+    assert_eq!(app.selected, HashSet::from([marked]));
+    render(&mut app, 100, 30);
+    let p = point(&app, Hit::Row(1));
+    mouse(
+        &mut app,
+        MouseEventKind::Drag(MouseButton::Left),
+        p,
+        KeyModifiers::NONE,
+    );
+    assert_eq!(app.selected, HashSet::from([marked]));
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        p,
+        KeyModifiers::CONTROL,
+    );
+    assert_eq!(app.drag_anchor, Some(1));
+    plain(&mut app, KeyCode::Char('s'));
+    settle(&mut app);
+    assert!(app.drag_anchor.is_none() && app.anchor.is_none());
+    assert!(app.selected.contains(&marked));
 }
