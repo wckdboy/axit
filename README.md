@@ -20,33 +20,35 @@ editing it; site checks verify both generated SVGs match.
 ## Project status
 
 [Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
-tracks current work and the roadmap. [Axit 0.4.1](https://github.com/wckdboy/axit/releases/tag/v0.4.1)
-is released with the Apps view, reviewed standalone removal, Homebrew/Flatpak
-installation, related-data review and scoped MCP/ACP app inspection. It includes
-the Copper palette, shared split-pixel mark, arrow navigation and storage map.
-Explicit roots work without HOME, and Apps selection stays separate from file marks.
+tracks current work and the roadmap. [Axit 0.5.0](https://github.com/wckdboy/axit/releases/tag/v0.5.0)
+is released. Space, Find and Clean can reach every indexed result with bounded
+windows, stable sorting, first/last and previous/next navigation. Marks keep their
+file identities across windows, and the storage map summarizes the whole folder.
+CLI, MCP and ACP share the same cursor engine. The Apps view, reviewed file operations,
+Copper palette and shared pixel mark remain included.
 [axit.sh](https://axit.sh) is deployed through the standard [Wrangler workflow](site/README.md).
 
-[Source CI](https://github.com/wckdboy/axit/actions/runs/40165643707) passed 84 Rust
-tests and 103 MCP/ACP checks on macOS, and 81 Rust tests and 104 protocol checks on
+[Source CI](https://github.com/wckdboy/axit/actions/runs/40188996121) passed 93 Rust
+tests and 227 MCP/ACP checks on macOS, and 90 Rust tests and 228 protocol checks on
 Linux, plus installer/tamper, PTY/native-manager fixtures and site checks. The
-[release workflow](https://github.com/wckdboy/axit/actions/runs/40165943269) built
-and checked all four platform packages. Public archives match SHA256SUMS and
-GitHub asset digests. Intel Mac protocol, installer and PTY checks pass through
-Rosetta; the Apple Silicon installer upgrade preserves the existing index and
+[release workflow](https://github.com/wckdboy/axit/actions/runs/40189836072) built
+and checked all four platform packages. Public archives match SHA256SUMS and GitHub
+asset digests. Intel Mac protocol, installer and PTY checks pass through Rosetta;
+the Apple Silicon public-installer upgrade preserves the existing index and
 preferences. Production desktop, mobile and dark browser checks pass.
-[VALIDATION.json](https://github.com/wckdboy/axit/releases/download/v0.4.1/VALIDATION.json)
-records package, installation and deployment evidence.
+[VALIDATION.json](https://github.com/wckdboy/axit/releases/download/v0.5.0/VALIDATION.json)
+records package, installation, benchmark and deployment evidence.
 
-The full application-manager CodeRabbit CLI review and final UI follow-up each
-reported zero findings after fixes. The patch addresses its late GitHub HOME
-finding with regressions. Its separate CLI re-review hit the included quota;
-the patch is covered by CI and the review history in [PR #7](https://github.com/wckdboy/axit/pull/7).
+CodeRabbit's history-overlay and drag-anchor findings are fixed with regressions.
+Full and focused CLI follow-ups report zero findings; the GitHub check passed and
+the review thread is resolved in [PR #8](https://github.com/wckdboy/axit/pull/8).
+The PTY harness waits for the complete reviewed file identities before checking a
+terminal frame; its [CI run](https://github.com/wckdboy/axit/actions/runs/40190209154)
+checks the same released application.
 
-Application management (`AXIT-15`) is shipped. Bounded cursor pagination (`AXIT-6`)
-is in progress for the next release: TUI, CLI, MCP and ACP share stable ordering and
-can reach results beyond 1,000. Incremental filesystem updates (`AXIT-5`) follow;
-native Linux distro ownership/removal (`AXIT-18`) remains planned.
+Pagination (`AXIT-6`) is shipped. Next: incremental filesystem updates (`AXIT-5`)
+with bounded resource use and missed-event recovery. Native Linux distro ownership
+and removal (`AXIT-18`) remains planned work.
 
 ## Install
 
@@ -69,7 +71,7 @@ From a source checkout with Rust 1.88 or newer:
 sh install.sh --local
 ```
 
-Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.4.1` to pin
+Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.5.0` to pin
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 Renamed from SCRY: existing private indexes, cleanup preferences and the undo journal
@@ -399,6 +401,13 @@ index and never scans or mutates indexed files:
 AXIT_BENCH_STATE=/path/to/existing/state cargo test --release --locked --jobs 2 \
   benchmark_existing_index_navigation -- --ignored --nocapture
 ```
+
+A read-only 0.5 run used the existing 5,518,083-entry, 473,933,635-byte index.
+500-row windows across 4,705,831 file matches took 59–80 ms in the engine and
+63–86 ms over persistent MCP, including last and previous windows. The index and
+preferences were unchanged. These are single-machine measurements, not a latency
+guarantee; the [release proof](https://github.com/wckdboy/axit/releases/download/v0.5.0/VALIDATION.json)
+includes the individual measurements.
 
 ## Build and verify
 
