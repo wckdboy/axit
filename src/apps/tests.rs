@@ -135,7 +135,7 @@ fn brew_hints_do_not_enable_globs_or_parent_traversal_and_flatpak_refs_are_preci
         vec![ctx.home.join("Library/Caches/org.wckd.Alpha")]
     );
     let apps = super::managed::parse_flatpak(
-        "app/org.wckd.Alpha/x86_64/stable\tAlpha\tuser\napp/org.wckd.Alpha/x86_64/beta\tAlpha Beta\tsystem\n../../escape\tBad\tuser\n",
+        "org.wckd.Alpha/x86_64/stable\tAlpha\tuser\napp/org.wckd.Alpha/x86_64/beta\tAlpha Beta\tsystem\n../../escape\tBad\tuser\n",
     );
     assert_eq!(apps.len(), 2);
     assert!(matches!(
@@ -319,7 +319,7 @@ fn system_flatpak_inventory_replaces_the_launcher_protection_with_native_ownersh
     let tool = temp.path().join("flatpak");
     fs::write(
         &tool,
-        "#!/bin/sh\nprintf 'app/org.wckd.Flat/x86_64/stable\\tFlat\\tsystem\\n'\n",
+        "#!/bin/sh\nprintf 'org.wckd.Flat/x86_64/stable\\tFlat\\tsystem\\n'\n",
     )
     .unwrap();
     fs::set_permissions(&tool, fs::Permissions::from_mode(0o700)).unwrap();

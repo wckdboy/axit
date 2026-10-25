@@ -277,19 +277,25 @@ pub(super) fn parse_flatpak(text: &str) -> Vec<Application> {
         .take(4096)
         .filter_map(|line| {
             let parts: Vec<_> = line.split('\t').collect();
+            // `list --columns=ref` emits ID/ARCH/BRANCH, without the app/ kind.
+            let reference = if parts.first().is_some_and(|p| p.starts_with("app/")) {
+                parts[0].to_string()
+            } else {
+                format!("app/{}", parts.first()?)
+            };
             if parts.len() < 3
-                || !valid_flatpak_ref(parts[0])
+                || !valid_flatpak_ref(&reference)
                 || !matches!(parts[2], "user" | "system")
             {
                 return None;
             }
             Some(Application {
-                id: parts[0].split('/').nth(1)?.into(),
+                id: reference.split('/').nth(1)?.into(),
                 name: crate::clean(&parts[1].chars().take(255).collect::<String>()),
                 version: None,
                 path: None,
                 source: Source::Flatpak {
-                    reference: parts[0].into(),
+                    reference,
                     user: parts[2] == "user",
                 },
                 protected: false,

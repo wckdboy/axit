@@ -170,7 +170,8 @@ is performed. A changed or running primary bundle blocks its related-data remova
 Normal writable `/Applications` bundles can be removed without elevating Axit;
 protected system apps and folders needing administrator authorization stay blocked.
 
-Homebrew casks on macOS and Flatpak apps on Linux use their native package manager.
+Homebrew casks on macOS and Flatpak apps in the standard user/system Linux
+installations use their native package manager.
 Review the exact command, then confirm; its original prompts remain available while
 Axit temporarily returns the terminal. No `--zap`, force removal or user-data deletion
 is added. Axit Undo covers files moved to Trash, not native package-manager actions.
@@ -381,3 +382,5 @@ AXIT is an independent MIT-licensed implementation inspired by
 [FSearch](https://github.com/cboxdoerfer/fsearch)'s indexed-search interaction model.
 Protocol references: [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 and [Agent Client Protocol v1](https://agentclientprotocol.com/protocol/v1/overview).
+
+Native adapter references: [Flatpak list implementation](https://github.com/flatpak/flatpak/blob/main/app/flatpak-builtins-list.c), [Homebrew cask artifacts](https://docs.brew.sh/Cask-Cookbook).
