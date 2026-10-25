@@ -19,27 +19,27 @@ editing it; site checks verify both generated SVGs match.
 ## Project status
 
 [Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
-tracks current work and the roadmap. [Axit 0.2.0](https://github.com/wckdboy/axit/releases/tag/v0.2.0)
-is released with SCRY state compatibility, the Lichen theme, keyboard/mouse navigation
-and tested recovery across index refreshes and partial operation failures.
+tracks current work and the roadmap. [Axit 0.3.0](https://github.com/wckdboy/axit/releases/tag/v0.3.0)
+is released with a clickable storage map, explicit two-button confirmation,
+navigation focus, bounded background workers and the shared pixel axe.
 [axit.sh](https://axit.sh) is live on Cloudflare using the shared WCKD layout and
 the standard [Wrangler workflow](site/README.md).
 
-[Source CI](https://github.com/wckdboy/axit/actions/runs/40143400185) passed 47 Rust
-tests and 88 MCP/ACP checks on macOS, and 45 Rust tests and 89 protocol checks on
+[Source CI](https://github.com/wckdboy/axit/actions/runs/40154205170) passed 65 Rust
+tests and 88 MCP/ACP checks on macOS, and 62 Rust tests and 89 protocol checks on
 Linux, plus installer/tamper, PTY and site checks. The
-[release workflow](https://github.com/wckdboy/axit/actions/runs/40143631677) built all
+[release workflow](https://github.com/wckdboy/axit/actions/runs/40154268112) built all
 four targets and tested the native Apple Silicon and Linux musl packages. The
 published Intel Mac package also passed protocol, installer and PTY checks through
 Rosetta. The README and Plane are updated alongside verified releases.
 
-The 0.3.0 release candidate adds a clickable storage map, explicit two-button
-confirmation, navigation focus and bounded background workers. Native validation
-currently passes 65 Rust tests, Clippy and the keyboard/mouse PTY suite. Packaged
-cross-platform checks and publication are still pending.
+CodeRabbit's major-issue gate passes; its follow-up review reports zero findings.
+The later shortcut guidance and singular-cache wording suggestions are also fixed.
 
 Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
 for more than 1,000 search/folder results (`AXIT-6`). Both remain planned work.
+An application manager with reviewed uninstall, related-file discovery and native
+package-manager installation is in progress (`AXIT-15`).
 
 ## Install
 
@@ -62,7 +62,7 @@ From a source checkout with Rust 1.88 or newer:
 sh install.sh --local
 ```
 
-Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.2.0` to pin
+Set `AXIT_INSTALL_DIR` to change the install location, or `AXIT_VERSION=v0.3.0` to pin
 a release. Re-run the installer to upgrade. No sudo is needed for installation.
 
 Renamed from SCRY: existing private indexes, cleanup preferences and the undo journal
