@@ -155,9 +155,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     app.ui = Ui::default();
     frame.render_widget(Block::default().style(Style::default().bg(BG).fg(FG)), area);
-    if area.width < 48 || area.height < 14 {
+    if area.width < 48 || area.height < 16 {
         frame.render_widget(
-            Paragraph::new("AXIT / WCKD.ai\nExpand to 48 × 14. Ctrl-Q quits.")
+            Paragraph::new("AXIT / WCKD.ai\nExpand to 48 × 16. Ctrl-Q quits.")
                 .style(Style::default().fg(ACCENT)),
             area,
         );
@@ -252,9 +252,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if layout[1].right().saturating_sub(x) >= 25 {
         frame.render_widget(
             Paragraph::new(if app.focus == Focus::Nav {
-                "←→ sections · Enter opens"
+                "←→ sections · ↓ opens"
             } else {
-                "Ctrl-Tab next · F6 nav"
+                "↑ at top / Ctrl-↑ nav"
             })
             .style(Style::default().fg(DIM)),
             Rect::new(
@@ -885,6 +885,7 @@ fn modal(frame: &mut Frame, app: &mut App, area: Rect) {
                 "Ctrl-Tab / Ctrl-PgDn Next section · Ctrl-Shift-Tab / Ctrl-PgUp Previous",
                 "Alt-1…4 Switch anywhere, including dialogs · F6 Focus navigation",
                 "Navigation: ←→ choose a section · Enter / Down opens it",
+                "Up at the first row returns to navigation · Ctrl-Up jumps there",
                 "Space map: g shows/hides · click selects · double-click opens",
                 "/ or Ctrl-F Search · Tab / Shift-Tab cycles navigation and content",
                 "↑↓ / j k Move · Home / End First / last · PgUp / PgDn One page",

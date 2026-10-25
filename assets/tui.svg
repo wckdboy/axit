@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="684" viewBox="0 0 1448 884" role="img" aria-label="AXIT terminal storage browser"><title>AXIT terminal capture — temporary test fixtures</title><rect width="100%" height="100%" rx="16" fill="#14191d"/>
 <rect x="24" y="24" width="1400" height="22" fill="#14191d"/>
-<rect x="24" y="46" width="40" height="22" fill="#14191d"/>
-<rect x="64" y="46" width="50" height="22" fill="#d9966b"/>
-<rect x="114" y="46" width="1310" height="22" fill="#14191d"/>
-<rect x="24" y="68" width="30" height="22" fill="#14191d"/>
-<rect x="54" y="68" width="20" height="22" fill="#d9966b"/>
-<rect x="74" y="68" width="10" height="22" fill="#14191d"/>
-<rect x="84" y="68" width="30" height="22" fill="#d9966b"/>
-<rect x="114" y="68" width="1310" height="22" fill="#14191d"/>
-<rect x="24" y="90" width="20" height="22" fill="#14191d"/>
-<rect x="44" y="90" width="20" height="22" fill="#d9966b"/>
-<rect x="64" y="90" width="1360" height="22" fill="#14191d"/>
+<rect x="24" y="46" width="20" height="22" fill="#14191d"/>
+<rect x="44" y="46" width="40" height="22" fill="#d9966b"/>
+<rect x="84" y="46" width="1340" height="22" fill="#14191d"/>
+<rect x="24" y="68" width="20" height="22" fill="#14191d"/>
+<rect x="44" y="68" width="20" height="22" fill="#d9966b"/>
+<rect x="64" y="68" width="30" height="22" fill="#14191d"/>
+<rect x="94" y="68" width="10" height="22" fill="#d9966b"/>
+<rect x="104" y="68" width="1320" height="22" fill="#14191d"/>
+<rect x="24" y="90" width="50" height="22" fill="#14191d"/>
+<rect x="74" y="90" width="30" height="22" fill="#d9966b"/>
+<rect x="104" y="90" width="1320" height="22" fill="#14191d"/>
 <rect x="24" y="112" width="1400" height="22" fill="#14191d"/>
 <rect x="24" y="134" width="10" height="22" fill="#14191d"/>
 <rect x="34" y="134" width="90" height="22" fill="#d9966b"/>
@@ -38,45 +38,45 @@
 <rect x="24" y="244" width="10" height="22" fill="#14191d"/>
 <rect x="34" y="244" width="860" height="22" fill="#1c2226"/>
 <rect x="894" y="244" width="300" height="22" fill="#d9966b"/>
-<rect x="1194" y="244" width="150" height="22" fill="#4a3229"/>
-<rect x="1344" y="244" width="60" height="22" fill="#3b3141"/>
+<rect x="1194" y="244" width="150" height="22" fill="#3b3141"/>
+<rect x="1344" y="244" width="60" height="22" fill="#2b3d38"/>
 <rect x="1404" y="244" width="10" height="22" fill="#1c2226"/>
 <rect x="1414" y="244" width="10" height="22" fill="#14191d"/>
 <rect x="24" y="266" width="10" height="22" fill="#14191d"/>
 <rect x="34" y="266" width="860" height="22" fill="#1c2226"/>
 <rect x="894" y="266" width="300" height="22" fill="#d9966b"/>
-<rect x="1194" y="266" width="150" height="22" fill="#4a3229"/>
-<rect x="1344" y="266" width="60" height="22" fill="#3b3141"/>
+<rect x="1194" y="266" width="150" height="22" fill="#3b3141"/>
+<rect x="1344" y="266" width="60" height="22" fill="#2b3d38"/>
 <rect x="1404" y="266" width="10" height="22" fill="#1c2226"/>
 <rect x="1414" y="266" width="10" height="22" fill="#14191d"/>
 <rect x="24" y="288" width="10" height="22" fill="#14191d"/>
 <rect x="34" y="288" width="860" height="22" fill="#1c2226"/>
 <rect x="894" y="288" width="300" height="22" fill="#d9966b"/>
-<rect x="1194" y="288" width="150" height="22" fill="#4a3229"/>
-<rect x="1344" y="288" width="60" height="22" fill="#413c2a"/>
+<rect x="1194" y="288" width="150" height="22" fill="#3b3141"/>
+<rect x="1344" y="288" width="60" height="22" fill="#303542"/>
 <rect x="1404" y="288" width="10" height="22" fill="#1c2226"/>
 <rect x="1414" y="288" width="10" height="22" fill="#14191d"/>
 <rect x="24" y="310" width="10" height="22" fill="#14191d"/>
 <rect x="34" y="310" width="860" height="22" fill="#1c2226"/>
 <rect x="894" y="310" width="300" height="22" fill="#d9966b"/>
-<rect x="1194" y="310" width="150" height="22" fill="#4a3229"/>
-<rect x="1344" y="310" width="60" height="22" fill="#413c2a"/>
+<rect x="1194" y="310" width="150" height="22" fill="#3b3141"/>
+<rect x="1344" y="310" width="60" height="22" fill="#303542"/>
 <rect x="1404" y="310" width="10" height="22" fill="#1c2226"/>
 <rect x="1414" y="310" width="10" height="22" fill="#14191d"/>
 <rect x="24" y="332" width="10" height="22" fill="#14191d"/>
 <rect x="34" y="332" width="860" height="22" fill="#1c2226"/>
 <rect x="894" y="332" width="300" height="22" fill="#d9966b"/>
-<rect x="1194" y="332" width="90" height="22" fill="#4a3229"/>
-<rect x="1284" y="332" width="60" height="22" fill="#3b3141"/>
-<rect x="1344" y="332" width="60" height="22" fill="#413c2a"/>
+<rect x="1194" y="332" width="90" height="22" fill="#3b3141"/>
+<rect x="1284" y="332" width="60" height="22" fill="#2b3d38"/>
+<rect x="1344" y="332" width="60" height="22" fill="#303542"/>
 <rect x="1404" y="332" width="10" height="22" fill="#1c2226"/>
 <rect x="1414" y="332" width="10" height="22" fill="#14191d"/>
 <rect x="24" y="354" width="10" height="22" fill="#14191d"/>
 <rect x="34" y="354" width="860" height="22" fill="#1c2226"/>
 <rect x="894" y="354" width="300" height="22" fill="#d9966b"/>
-<rect x="1194" y="354" width="90" height="22" fill="#4a3229"/>
-<rect x="1284" y="354" width="60" height="22" fill="#3b3141"/>
-<rect x="1344" y="354" width="60" height="22" fill="#413c2a"/>
+<rect x="1194" y="354" width="90" height="22" fill="#3b3141"/>
+<rect x="1284" y="354" width="60" height="22" fill="#2b3d38"/>
+<rect x="1344" y="354" width="60" height="22" fill="#303542"/>
 <rect x="1404" y="354" width="10" height="22" fill="#1c2226"/>
 <rect x="1414" y="354" width="10" height="22" fill="#14191d"/>
 <rect x="24" y="376" width="10" height="22" fill="#14191d"/>
@@ -211,44 +211,44 @@
 <rect x="44" y="46" width="10" height="11.0" fill="#14191d"/>
 <rect x="54" y="46" width="10" height="11.0" fill="#14191d"/>
 <rect x="64" y="46" width="10" height="11.0" fill="#14191d"/>
-<rect x="74" y="46" width="10" height="11.0" fill="#d9966b"/>
-<rect x="84" y="46" width="10" height="11.0" fill="#d9966b"/>
-<rect x="94" y="46" width="10" height="11.0" fill="#d9966b"/>
-<rect x="104" y="46" width="10" height="11.0" fill="#d9966b"/>
+<rect x="74" y="46" width="10" height="11.0" fill="#14191d"/>
+<rect x="84" y="46" width="10" height="11.0" fill="#14191d"/>
+<rect x="94" y="46" width="10" height="11.0" fill="#14191d"/>
+<rect x="104" y="46" width="10" height="11.0" fill="#14191d"/>
 <text xml:space="preserve" x="134" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="700" fill="#d9966b">AXIT</text>
 <text xml:space="preserve" x="184" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#a2adb3">WCKD.ai   57 indexed</text>
 <rect x="34" y="68" width="10" height="11.0" fill="#14191d"/>
-<rect x="44" y="68" width="10" height="11.0" fill="#14191d"/>
+<rect x="44" y="68" width="10" height="11.0" fill="#d9966b"/>
 <rect x="54" y="68" width="10" height="11.0" fill="#d9966b"/>
 <rect x="64" y="68" width="10" height="11.0" fill="#d9966b"/>
-<rect x="74" y="68" width="10" height="11.0" fill="#d9966b"/>
-<rect x="84" y="68" width="10" height="11.0" fill="#d9966b"/>
-<rect x="94" y="68" width="10" height="11.0" fill="#d9966b"/>
-<rect x="104" y="68" width="10" height="11.0" fill="#d9966b"/>
+<rect x="74" y="68" width="10" height="11.0" fill="#14191d"/>
+<rect x="84" y="68" width="10" height="11.0" fill="#14191d"/>
+<rect x="94" y="68" width="10" height="11.0" fill="#14191d"/>
+<rect x="104" y="68" width="10" height="11.0" fill="#14191d"/>
 <rect x="34" y="90" width="10" height="11.0" fill="#14191d"/>
-<rect x="44" y="90" width="10" height="11.0" fill="#14191d"/>
-<rect x="54" y="90" width="10" height="11.0" fill="#d9966b"/>
-<rect x="64" y="90" width="10" height="11.0" fill="#d9966b"/>
+<rect x="44" y="90" width="10" height="11.0" fill="#d9966b"/>
+<rect x="54" y="90" width="10" height="11.0" fill="#14191d"/>
+<rect x="64" y="90" width="10" height="11.0" fill="#14191d"/>
 <rect x="74" y="90" width="10" height="11.0" fill="#14191d"/>
-<rect x="84" y="90" width="10" height="11.0" fill="#14191d"/>
+<rect x="84" y="90" width="10" height="11.0" fill="#d9966b"/>
 <rect x="94" y="90" width="10" height="11.0" fill="#d9966b"/>
-<rect x="104" y="90" width="10" height="11.0" fill="#d9966b"/>
-<text xml:space="preserve" x="134" y="106" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#8fb9d1">117.2 GiB available / 926.4 GiB</text>
-<rect x="34" y="112" width="10" height="11.0" fill="#d9966b"/>
-<rect x="44" y="112" width="10" height="11.0" fill="#d9966b"/>
+<rect x="104" y="90" width="10" height="11.0" fill="#14191d"/>
+<text xml:space="preserve" x="134" y="106" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#8fb9d1">117.1 GiB available / 926.4 GiB</text>
+<rect x="34" y="112" width="10" height="11.0" fill="#14191d"/>
+<rect x="44" y="112" width="10" height="11.0" fill="#14191d"/>
 <rect x="54" y="112" width="10" height="11.0" fill="#14191d"/>
-<rect x="64" y="112" width="10" height="11.0" fill="#14191d"/>
-<rect x="74" y="112" width="10" height="11.0" fill="#14191d"/>
-<rect x="84" y="112" width="10" height="11.0" fill="#14191d"/>
-<rect x="94" y="112" width="10" height="11.0" fill="#14191d"/>
+<rect x="64" y="112" width="10" height="11.0" fill="#d9966b"/>
+<rect x="74" y="112" width="10" height="11.0" fill="#d9966b"/>
+<rect x="84" y="112" width="10" height="11.0" fill="#d9966b"/>
+<rect x="94" y="112" width="10" height="11.0" fill="#d9966b"/>
 <rect x="104" y="112" width="10" height="11.0" fill="#14191d"/>
 <text xml:space="preserve" x="134" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#526068">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</text>
 <text xml:space="preserve" x="304" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#a8c4ac">▰▰▰</text>
 <text xml:space="preserve" x="334" y="128" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#a2adb3"> used / available</text>
 <text xml:space="preserve" x="34" y="150" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#14191d"> 1 Space</text>
 <text xml:space="preserve" x="124" y="150" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e8e6e1">  2 Find   3 Clean   4 Activity</text>
-<text xml:space="preserve" x="464" y="150" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#a2adb3">Ctrl-Tab next · F6 nav</text>
-<text xml:space="preserve" x="34" y="172" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#526068">┌ Location · /private/tmp/axit-ui-57gkisme/files ────────────────────────────────────────────────────────────────────────────────────────┐</text>
+<text xml:space="preserve" x="464" y="150" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#a2adb3">↑ at top / Ctrl-↑ nav</text>
+<text xml:space="preserve" x="34" y="172" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#526068">┌ Location · /private/tmp/axit-ui-3o31855c/files ────────────────────────────────────────────────────────────────────────────────────────┐</text>
 <text xml:space="preserve" x="34" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#526068">│</text>
 <text xml:space="preserve" x="44" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#14191d"> Scope</text>
 <text xml:space="preserve" x="1404" y="194" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#526068">│</text>
@@ -304,7 +304,7 @@
 <text xml:space="preserve" x="44" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e8e6e1"> [ ] ▸ documents                                                  20.0 KiB    now</text>
 <text xml:space="preserve" x="924" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d9966b">█</text>
 <text xml:space="preserve" x="944" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#526068">│</text>
-<text xml:space="preserve" x="954" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#a2adb3">/private/tmp/axit-ui-57gkisme/files/downloads</text>
+<text xml:space="preserve" x="954" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#a2adb3">/private/tmp/axit-ui-3o31855c/files/downloads</text>
 <text xml:space="preserve" x="1404" y="480" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#526068">│</text>
 <text xml:space="preserve" x="34" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#d9966b">│</text>
 <text xml:space="preserve" x="44" y="502" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16.6" font-weight="400" fill="#e8e6e1"> [ ] · file-000.txt                                               4.0 KiB     now</text>

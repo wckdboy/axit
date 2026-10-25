@@ -94,6 +94,7 @@ impl App {
         if self.view != view {
             self.remember();
             self.view = view;
+            self.activity_scroll = 0;
             if !self.applying && !self.auto_busy {
                 self.status = "Ready".into();
             }
@@ -104,7 +105,6 @@ impl App {
         } else {
             Focus::List
         };
-        self.activity_scroll = 0;
     }
 
     fn folder(&mut self, id: u32, focused: Option<u32>) {
@@ -416,6 +416,10 @@ impl App {
         if ctrl && key.code == KeyCode::Char('q') {
             return self.quit();
         }
+        if ctrl && key.code == KeyCode::Up {
+            self.navigate(self.view, true);
+            return false;
+        }
         if ctrl
             && matches!(
                 key.code,
@@ -479,6 +483,7 @@ impl App {
         }
         if self.focus == Focus::Query {
             match key.code {
+                KeyCode::Up if key.modifiers.is_empty() => self.focus = Focus::Nav,
                 KeyCode::Esc | KeyCode::Enter | KeyCode::Down => self.focus = Focus::List,
                 _ => {
                     if self.query.key(key) {
@@ -510,7 +515,8 @@ impl App {
                     self.focus = self.content_focus();
                     return false;
                 }
-                KeyCode::Up | KeyCode::Esc => {
+                KeyCode::Up => return false,
+                KeyCode::Esc => {
                     self.focus = self.content_focus();
                     return false;
                 }
@@ -522,7 +528,11 @@ impl App {
         }
         if self.focus == Focus::Actions {
             match key.code {
-                KeyCode::Left | KeyCode::Up => {
+                KeyCode::Up => {
+                    self.focus = Focus::List;
+                    return false;
+                }
+                KeyCode::Left => {
                     self.cycle_actions(-1);
                     return false;
                 }
@@ -540,6 +550,19 @@ impl App {
                     return false;
                 }
                 _ => {}
+            }
+        }
+        if key.code == KeyCode::Up && key.modifiers.is_empty() {
+            let at_top = if self.view == View::Activity {
+                self.activity_scroll == 0
+            } else if self.focus == Focus::Inspect {
+                self.inspect_scroll == 0
+            } else {
+                self.table.selected().unwrap_or(0) == 0
+            };
+            if at_top {
+                self.focus = Focus::Nav;
+                return false;
             }
         }
         if self.view == View::Activity || self.focus == Focus::Inspect {

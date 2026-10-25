@@ -325,7 +325,7 @@ fn modal_clicks_are_trapped_and_long_content_keeps_controls_visible() {
     render(&mut app, 80, 24);
     let background = point(&app, Hit::Row(0));
     app.open_modal(Modal::Help);
-    let text = render(&mut app, 48, 14);
+    let text = render(&mut app, 48, 16);
     assert!(text.contains("Close"));
     assert!(app.ui.modal_max > 0);
     mouse(
@@ -337,7 +337,7 @@ fn modal_clicks_are_trapped_and_long_content_keeps_controls_visible() {
     assert_eq!(app.view, View::Space);
     assert!(app.modal.is_some());
     plain(&mut app, KeyCode::End);
-    render(&mut app, 48, 14);
+    render(&mut app, 48, 16);
     assert_eq!(app.modal_scroll, app.ui.modal_max);
     click(&mut app, Hit::ModalCancel);
     assert!(app.modal.is_none());
@@ -833,4 +833,83 @@ fn rapid_query_changes_coalesce_to_the_latest_search() {
     assert_eq!(app.ids, vec![id(&app, "file-019.txt")]);
     assert_eq!(app.matched, 1);
     assert!(!app.search_pending && !app.search_inflight);
+}
+
+#[test]
+fn arrow_keys_move_between_content_and_navigation_without_clearing_input_or_marks() {
+    let (_temp, mut app) = fixture(4);
+    let first = app.focused().unwrap();
+    app.selected.insert(first);
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::Nav);
+    assert!(app.selected.contains(&first));
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::Nav);
+    plain(&mut app, KeyCode::Right);
+    assert_eq!(app.view, View::Find);
+    plain(&mut app, KeyCode::Down);
+    assert_eq!(app.focus, Focus::Query);
+    plain(&mut app, KeyCode::Char('2'));
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::Nav);
+    assert_eq!(app.query.text, "2");
+    plain(&mut app, KeyCode::Down);
+    assert_eq!(app.focus, Focus::Query);
+    key(&mut app, KeyCode::Up, KeyModifiers::CONTROL);
+    assert_eq!(app.focus, Focus::Nav);
+    plain(&mut app, KeyCode::Left);
+    plain(&mut app, KeyCode::Down);
+    plain(&mut app, KeyCode::End);
+    let last = app.table.selected().unwrap();
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::List);
+    assert_eq!(app.table.selected(), Some(last - 1));
+    plain(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Up, KeyModifiers::SHIFT);
+    assert_eq!(app.focus, Focus::List);
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::Nav);
+    app.focus = Focus::Actions;
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::List);
+    app.focus = Focus::Inspect;
+    app.inspect_scroll = 0;
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::Nav);
+    key(&mut app, KeyCode::Char('4'), KeyModifiers::ALT);
+    app.activity_scroll = 7;
+    key(&mut app, KeyCode::Up, KeyModifiers::CONTROL);
+    assert_eq!(app.activity_scroll, 7);
+    plain(&mut app, KeyCode::Down);
+    assert_eq!(app.activity_scroll, 7);
+    app.activity_scroll = 1;
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.activity_scroll, 0);
+    assert_eq!(app.focus, Focus::List);
+    plain(&mut app, KeyCode::Up);
+    assert_eq!(app.focus, Focus::Nav);
+    app.open_modal(Modal::Destination(Editor::new("keep this".into())));
+    key(&mut app, KeyCode::Up, KeyModifiers::CONTROL);
+    assert!(app.modal.is_none());
+    assert_eq!(app.focus, Focus::Nav);
+    settle(&mut app);
+}
+
+#[test]
+fn minimum_find_view_shows_a_result_and_accessible_actions() {
+    let (_temp, mut app) = fixture(2);
+    plain(&mut app, KeyCode::Char('/'));
+    app.query = Editor::new("file-000".into());
+    app.query_changed();
+    settle(&mut app);
+    let output = render(&mut app, 48, 16);
+    assert!(output.contains("file-000.txt"), "{output}");
+    assert!(app.ui.hits.iter().any(|(_, h)| *h == Hit::Row(0)));
+    assert!(
+        app.ui
+            .hits
+            .iter()
+            .any(|(_, h)| *h == Hit::Command(Command::Trash))
+    );
+    assert!(render(&mut app, 48, 14).contains("Expand to 48 × 16"));
 }

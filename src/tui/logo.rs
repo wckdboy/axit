@@ -7,7 +7,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-pub(super) const MASK: &str = include_str!("../../assets/axe.txt");
+pub(super) const MASK: &str = include_str!("../../assets/mark.txt");
 
 fn color(pixel: u8) -> Color {
     match pixel {

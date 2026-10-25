@@ -131,6 +131,13 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         assert 'AXIT' in app.content() and 'WCKD.ai' in app.content(),app.content()
         assert len({c.fg for row in app.screen.buffer.values() for c in row.values()})>=5,'Theme colors missing'
         app.snapshot('space')
+        app.send(b'\x1b[A\x1b[C\x1b[B')  # First row -> navigation -> Find -> query.
+        app.wait(lambda:'Search · typing' in app.content())
+        app.send(b'file-003')
+        app.wait(lambda:'1 match' in app.content())
+        app.send(b'\x15')  # Clear the fixture query before later editing tests.
+        app.send(b'\x1b[1;5A\x1b[D\x1b[B')  # Ctrl-Up -> navigation -> Space -> list.
+        app.wait(lambda:'Space map' in app.content())
         app.send(b'1234')
         app.wait(lambda:'Operations' in app.content())
         app.send(b'\x1b[6;5~')  # Ctrl-PageDown wraps to Space without Escape.
@@ -191,7 +198,7 @@ with tempfile.TemporaryDirectory(prefix='axit-ui-',dir='/tmp') as temporary:
         app.resize(80,24)
         assert 'Close' in app.content(),app.content()
         app.snapshot('compact')
-        app.resize(48,14)
+        app.resize(48,16)
         assert 'Close' in app.content(),app.content()
         app.click('Close')
         app.resize(140,38)
