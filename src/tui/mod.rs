@@ -1,3 +1,4 @@
+mod applications;
 mod editor;
 mod logo;
 mod navigation;
@@ -45,6 +46,7 @@ enum View {
     Find,
     Clean,
     Activity,
+    Apps,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Focus {
@@ -73,6 +75,11 @@ enum Command {
     Auto,
     Help,
     Quit,
+    Install,
+    Uninstall,
+    AppFiles,
+    Leftovers,
+    RefreshApps,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Hit {
@@ -93,6 +100,8 @@ enum Hit {
     ModalCancel,
     ModalConfirm,
     Menu(usize),
+    AppFile(usize),
+    AppProvider,
 }
 
 #[derive(Default)]
@@ -119,6 +128,9 @@ impl Ui {
 }
 
 enum Modal {
+    AppFiles(applications::Files),
+    AppInstall(applications::Install),
+    Managed(Box<crate::apps::ManagedPlan>),
     Help,
     Inspect,
     Preview(Box<Plan>),
@@ -137,6 +149,8 @@ struct Location {
     offset: usize,
 }
 enum Message {
+    Apps(u64, applications::Loaded),
+    AppFiles(u64, applications::Files),
     Scan(Result<PathBuf, String>),
     Search(u64, Result<query::SearchResult, String>),
     Listing(u64, Option<rows::Data>, Option<u32>, usize),
@@ -146,6 +160,7 @@ enum Message {
 }
 
 struct OperationUpdate {
+    mutated: bool,
     summary: String,
     hidden: Vec<u32>,
     restored: Option<u32>,
@@ -155,6 +170,8 @@ struct OperationUpdate {
 }
 
 pub struct App {
+    apps: applications::State,
+    pending_native: Option<crate::apps::ManagedPlan>,
     state: PathBuf,
     root: PathBuf,
     index: Option<Arc<Index>>,
@@ -224,16 +241,26 @@ impl App {
         }
     }
     pub fn new(root: PathBuf, state: PathBuf) -> Self {
+        Self::new_in(root, state, View::Space, None)
+    }
+    fn new_in(
+        root: PathBuf,
+        state: PathBuf,
+        view: View,
+        context: Option<crate::apps::Context>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel();
         let index = Index::open(&crate::index_path(&state))
             .ok()
             .filter(|i| i.path(0).is_ok_and(|p| p == root))
             .map(Arc::new);
         let mut app = Self {
+            apps: applications::State::new(context),
+            pending_native: None,
             state,
             root,
             index,
-            view: View::Space,
+            view,
             folder: 0,
             ids: Vec::new(),
             table: TableState::default(),
@@ -310,6 +337,9 @@ impl App {
     }
 
     fn focused(&self) -> Option<u32> {
+        if self.view == View::Apps {
+            return None;
+        }
         self.table
             .selected()
             .and_then(|row| self.ids.get(row))
@@ -333,7 +363,7 @@ impl App {
             && !self.searching
             && !self.listing
             && self.scan.is_none()
-            && self.view != View::Activity
+            && !matches!(self.view, View::Activity | View::Apps)
             && !self.chosen().is_empty()
     }
     fn cancel_plan(&mut self) {
@@ -369,6 +399,13 @@ impl App {
         self.invalidate_search();
         self.clear_selection();
         self.table = TableState::default();
+        if self.view == View::Apps {
+            self.apps_filter(None);
+            if self.apps.catalog.apps.is_empty() && !self.apps.inflight {
+                self.apps_reload();
+            }
+            return;
+        }
         if self.view == View::Find {
             self.restore_focus = focused;
             *self.table.offset_mut() = offset;
@@ -520,6 +557,15 @@ impl App {
         while let Ok(message) = self.rx.try_recv() {
             changed = true;
             match message {
+                Message::Apps(ticket, data) => self.receive_apps(ticket, data),
+                Message::AppFiles(ticket, review) => {
+                    self.plan_inflight = false;
+                    if ticket == self.plan_generation {
+                        self.busy = false;
+                        self.open_modal(Modal::AppFiles(review));
+                        self.modal_focus = 2;
+                    }
+                }
                 Message::Listing(ticket, data, focused, offset) => {
                     self.list_inflight = false;
                     if ticket == self.generation.load(Ordering::Relaxed)
@@ -622,7 +668,8 @@ impl App {
                         Ok(update) => {
                             self.status = update.summary.clone();
                             self.record(update.summary.clone());
-                            if update.uncertain
+                            if update.mutated
+                                || update.uncertain
                                 || update.reindex
                                 || !update.hidden.is_empty()
                                 || update.restored.is_some()
@@ -639,7 +686,10 @@ impl App {
                             let focused = self.focused();
                             let offset = self.table.offset();
                             self.refresh(focused, offset);
-                            if update.reindex {
+                            if self.view == View::Apps {
+                                self.apps_reload();
+                            }
+                            if update.reindex && self.view != View::Apps {
                                 self.scan();
                                 self.status = format!("{} · refreshing index", update.summary);
                             }
@@ -674,7 +724,7 @@ impl App {
                         Ok(Some(update)) => {
                             self.status = update.summary.clone();
                             self.record(update.summary);
-                            if !update.hidden.is_empty() || update.uncertain {
+                            if update.mutated || !update.hidden.is_empty() || update.uncertain {
                                 self.hidden.extend(update.hidden);
                                 self.invalidate_rows();
                                 self.needs_rescan = true;
@@ -718,10 +768,11 @@ impl App {
                     let hidden = plan
                         .entries
                         .iter()
-                        .filter(|entry| r.completed.contains(&entry.path))
+                        .filter(|entry| entry.id != u32::MAX && r.completed.contains(&entry.path))
                         .map(|entry| entry.id)
                         .collect();
                     OperationUpdate {
+                        mutated: !r.completed.is_empty(),
                         summary: message,
                         hidden,
                         restored: None,
@@ -777,6 +828,7 @@ impl App {
                             .filter_map(|p| index.find_path(std::path::Path::new(p)))
                             .collect();
                         OperationUpdate {
+                            mutated: !r.completed.is_empty(),
                             summary: message,
                             hidden,
                             restored: None,
@@ -793,7 +845,29 @@ impl App {
 }
 
 pub fn run(root: PathBuf, state: PathBuf) -> Result<()> {
-    let mut app = App::new(root, state);
+    run_in(root, state, View::Space, None)
+}
+
+pub fn run_apps(root: PathBuf, state: PathBuf) -> Result<()> {
+    run_in(root, state, View::Apps, None)
+}
+
+/// Starts the Apps view with explicit inventory roots and native tools.
+pub fn run_apps_with_context(
+    root: PathBuf,
+    state: PathBuf,
+    context: crate::apps::Context,
+) -> Result<()> {
+    run_in(root, state, View::Apps, Some(context))
+}
+
+fn run_in(
+    root: PathBuf,
+    state: PathBuf,
+    view: View,
+    context: Option<crate::apps::Context>,
+) -> Result<()> {
+    let mut app = App::new_in(root, state, view, context);
     let mut terminal = ratatui::init();
     struct Restore(Vec<signal_hook::SigId>);
     impl Drop for Restore {
@@ -813,7 +887,7 @@ pub fn run(root: PathBuf, state: PathBuf) -> Result<()> {
             .push(signal_hook::flag::register(signal, terminate.clone())?);
     }
     execute!(io::stdout(), EnableMouseCapture, EnableBracketedPaste)?;
-    if app.index.is_none() {
+    if app.index.is_none() && view != View::Apps {
         app.scan();
     }
     let result = (|| -> Result<()> {
@@ -821,6 +895,55 @@ pub fn run(root: PathBuf, state: PathBuf) -> Result<()> {
         let mut last_draw = Instant::now();
         loop {
             dirty |= app.messages();
+            if let Some(plan) = app.pending_native.take() {
+                execute!(io::stdout(), DisableMouseCapture, DisableBracketedPaste)?;
+                ratatui::restore();
+                println!("\n{}\n", plan.command);
+                let result = plan.run(&app.state, plan.phrase());
+                let message = match result {
+                    Ok(()) => format!(
+                        "{} completed for {}",
+                        if plan.uninstall {
+                            "Uninstall"
+                        } else {
+                            "Install"
+                        },
+                        plan.target
+                    ),
+                    Err(error) => format!("{error:#}"),
+                };
+                println!("\n{message}");
+                if !terminate.load(Ordering::Relaxed) {
+                    println!("\nPress Enter to return to Axit.");
+                    while !terminate.load(Ordering::Relaxed) {
+                        if event::poll(Duration::from_millis(50))?
+                            && matches!(event::read()?,Event::Key(key) if key.code==crossterm::event::KeyCode::Enter)
+                        {
+                            break;
+                        }
+                    }
+                }
+                crossterm::terminal::enable_raw_mode()?;
+                execute!(
+                    io::stdout(),
+                    crossterm::terminal::EnterAlternateScreen,
+                    EnableMouseCapture,
+                    EnableBracketedPaste
+                )?;
+                // Fullscreen resize clears both buffers without querying cursor position.
+                // Some terminals and PTYs do not answer cursor-position reports.
+                let (width, height) = crossterm::terminal::size()?;
+                terminal.resize(Rect::new(0, 0, width, height))?;
+                app.busy = false;
+                app.applying = false;
+                app.status = message.clone();
+                app.record(message);
+                app.needs_rescan = true;
+                app.invalidate_rows();
+                app.save_overlay();
+                app.apps_reload();
+                dirty = true;
+            }
             app.auto_tick();
             if terminate.load(Ordering::Relaxed) && app.quit() {
                 break;
@@ -828,7 +951,12 @@ pub fn run(root: PathBuf, state: PathBuf) -> Result<()> {
             if app.quit_after_operation && !app.applying && !app.auto_busy {
                 break;
             }
-            let refresh = if app.scan.is_some() || app.busy || app.searching || app.listing {
+            let refresh = if app.scan.is_some()
+                || app.busy
+                || app.searching
+                || app.listing
+                || app.apps.loading
+            {
                 Duration::from_millis(200)
             } else {
                 Duration::from_secs(2)

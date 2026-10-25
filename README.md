@@ -41,8 +41,9 @@ about release attribution and preserving same-view scroll position are fixed.
 
 Next in Plane: incremental filesystem updates (`AXIT-5`) and bounded pagination
 for more than 1,000 search/folder results (`AXIT-6`). Both remain planned work.
-An application manager with reviewed uninstall, related-file discovery and native
-package-manager installation is in progress (`AXIT-15`).
+The 0.4.0 application-manager candidate adds the Apps view, reviewed uninstall,
+related files, Homebrew/Flatpak installation and scoped MCP/ACP app inspection.
+Final review and publication are in progress (`AXIT-15`).
 
 ## Install
 
@@ -89,9 +90,9 @@ axit doctor                        # physical volumes and access failures
 
 TUI keys:
 
-- `1` Space, `2` Find, `3` Clean, `4` Activity keeps focus on navigation, so
+- `1` Space, `2` Find, `3` Clean, `4` Activity, `5` Apps keeps focus on navigation, so
   repeated number shortcuts never get trapped in a text field. `Enter` enters a section.
-- `Alt-1…4` works even in text fields and dialogs. `Ctrl-Tab` /
+- `Alt-1…5` works even in text fields and dialogs. `Ctrl-Tab` /
   `Ctrl-Shift-Tab` switches sections; `Ctrl-PageDown/Up` is an alternative for terminals
   that intercept those keys. Switching sections safely cancels a pending review.
 - `F6` toggles navigation/content focus. In navigation, arrows choose a section and
@@ -142,6 +143,51 @@ Search supports quoted terms, `*.zip` wildcards, `!excluded`, `re:expression`,
 `ext:pdf;png`, `type:file`, `type:dir`, `size:>2gib`, `older:30d` and `path:project`.
 Plain terms use case-insensitive ASCII matching. Terms are combined with AND.
 Size filters use allocated disk space. `gb` is decimal; `gib` is binary.
+
+## Applications
+
+Open `axit apps` or choose `5 Apps`. This view reads bounded application metadata
+without building a disk index. `/` filters; `i` installs; `Delete` removes;
+`f` reviews related files; `l` switches installed apps/data candidates; `r` reloads apps.
+Click rows and buttons, or use arrows, Tab and Enter. Files reviews support Space,
+Home/End, PageUp/Down and the mouse wheel. Personal data stays unchecked by default.
+
+```sh
+axit apps list --json
+axit apps inspect 'Application Name'
+axit apps install firefox --provider brew       # preview exact native command
+axit apps install org.mozilla.firefox --provider flatpak
+axit apps uninstall 'Application Name'          # preview only
+axit apps leftovers --json
+axit apps trash-data 'leftover:org.example.App' --leftover --include-data
+```
+
+On macOS, standalone `.app` bundles use a reviewed, reversible Trash plan. Common
+identifier-based caches are selected with the bundle. Preferences, support files,
+containers, name-only matches and package-recipe hints need explicit selection.
+No vendor-prefix sweeps, shared group-container deletion or credential-store cleanup
+is performed. A changed or running primary bundle blocks its related-data removal.
+Normal writable `/Applications` bundles can be removed without elevating Axit;
+protected system apps and folders needing administrator authorization stay blocked.
+
+Homebrew casks on macOS and Flatpak apps on Linux use their native package manager.
+Review the exact command, then confirm; its original prompts remain available while
+Axit temporarily returns the terminal. No `--zap`, force removal or user-data deletion
+is added. Axit Undo covers files moved to Trash, not native package-manager actions.
+CLI execution needs `--confirm INSTALL` / `UNINSTALL` for native operations, or
+`--confirm TRASH` for standalone/data Trash. Without these flags, commands only preview.
+
+Data candidates combine bounded identity history with exact identifiers in known
+home folders. Unmatched folders may belong to services or shared software; nothing is
+selected automatically for them. `--include-data` and `--include-review` are separate
+CLI choices. Shared identifiers keep data protected. Native Linux distribution
+packages and arbitrary installer scripts are not uninstalled by Axit; their desktop
+launchers and related data can be inspected. No real user applications are modified
+by the test suite; package operations use a marked temporary-fixture helper.
+
+Apps and its Undo reload the app list without forcing a disk scan. Directory sizes
+without index metadata are labeled unknown; indexed estimates may be stale. Choosing
+Space/Find/Clean without an index starts the normal metadata scan.
 
 ## Understand the numbers
 
@@ -248,7 +294,15 @@ user approval for destructive calls. Plans still require exact confirmation and 
 revalidation. The server uses bounded newline-delimited stdio JSON-RPC, accepts at
 most four active requests, and supports search cancellation.
 
+App tools `axit_apps`, `axit_app_files` and `axit_app_data_plan` inspect bounded
+metadata and preview explicitly selected related-data Trash within the fixed server
+scope. They do not run native package operations or uninstall app bundles. Their
+plans use the existing mutation gate and exact confirmation.
+
 ## ACP
+
+`/apps [QUERY]` lists app metadata inside the session folder; `/app KEY` inspects
+related files within that same scope. Neither requires an existing disk index.
 
 ```sh
 axit acp --root "$HOME"
@@ -307,12 +361,12 @@ AXIT_BENCH_STATE=/path/to/existing/state cargo test --release --locked --jobs 2 
 cargo fmt --check
 cargo clippy --all-targets --locked --jobs 2 -- -D warnings
 cargo test --locked --jobs 2 -- --test-threads=1
-cargo build --release --locked --jobs 2
+cargo build --release --examples --bin axit --locked --jobs 2
 python3 scripts/protocol-test.py target/release/axit
 sh scripts/installer-test.sh target/release/axit
 python3 -m venv .venv-ui
 .venv-ui/bin/pip install pyte==0.8.2
-.venv-ui/bin/python scripts/tui-test.py target/release/axit
+.venv-ui/bin/python scripts/tui-test.py target/release/axit /tmp/axit-screens target/release/examples/apps_fixture
 ```
 
 The release workflow packages all four targets and SHA-256 manifests. It tests the

@@ -159,6 +159,58 @@ impl Shared {
             .map(|suffix| format!("axit_{suffix}"));
         let name = legacy.as_deref().unwrap_or(name);
         match name {
+            "axit_apps" => {
+                keys(args, &["query", "limit"])?;
+                let query = match args.get("query") {
+                    Some(v) => v.as_str().context("query must be a string")?,
+                    None => "",
+                };
+                ensure!(query.len() <= 4096, "Query is too long");
+                let limit = integer(args, "limit", 100, 500)? as usize;
+                ensure!(limit > 0, "limit must be at least 1");
+                app_inventory(&self.root, query, limit)
+            }
+            "axit_app_files" | "axit_app_data_plan" => {
+                keys(
+                    args,
+                    if name == "axit_app_files" {
+                        &["app_key"]
+                    } else {
+                        &["app_key", "paths"]
+                    },
+                )?;
+                let context = crate::apps::Context::system()?.constrained(&self.root)?;
+                let catalog = crate::apps::inventory(&context);
+                let key = args["app_key"]
+                    .as_str()
+                    .context("app_key must be a string")?;
+                ensure!(key.len() <= 4096, "Application key is too long");
+                let app = crate::apps::resolve(&catalog, key)?;
+                let files = crate::apps::review_files(&context, &catalog, app);
+                if name == "axit_app_files" {
+                    return Ok(
+                        json!({"key":app.key(),"application":app,"files":files,"note":"Scoped metadata only. Native install/uninstall uses axit apps in an interactive terminal."}),
+                    );
+                }
+                let paths = args["paths"].as_array().context("paths must be an array")?;
+                ensure!(
+                    !paths.is_empty() && paths.len() <= 128,
+                    "Choose 1–128 known related-data paths"
+                );
+                let paths=paths.iter().map(|p| {
+                    let path=PathBuf::from(p.as_str().context("Each path must be a string")?);
+                    ensure!(files.iter().any(|f|f.path==path&&f.selectable&&!matches!(f.kind,crate::apps::RelatedKind::Application|crate::apps::RelatedKind::Launcher)),"Choose a selectable related-data path from axit_app_files; app removal uses the interactive manager");
+                    Ok(path)
+                }).collect::<Result<Vec<_>>>()?;
+                let index = self.index().ok();
+                Ok(serde_json::to_value(ops::plan_app_trash(
+                    &self.root,
+                    &paths,
+                    &self.state,
+                    index.as_deref(),
+                    Some(app),
+                )?)?)
+            }
             "axit_status" => {
                 keys(args, &[])?;
                 Ok(self.status())
@@ -290,6 +342,27 @@ pub fn tools(writes: bool) -> Vec<Value> {
         json!({"type":"array","items":{"type":"integer","minimum":0},"minItems":1,"maxItems":128});
     let mut tools = vec![
         tool(
+            "axit_apps",
+            "List bounded application metadata inside the server's fixed filesystem scope. No native commands or launcher Exec fields run.",
+            json!({"query":{"type":"string","maxLength":4096},"limit":{"type":"integer","minimum":1,"maximum":500}}),
+            &[],
+            false,
+        ),
+        tool(
+            "axit_app_files",
+            "Inspect known related files inside the fixed scope. User data and uncertain matches are identified; native uninstall remains interactive.",
+            json!({"app_key":{"type":"string","maxLength":4096}}),
+            &["app_key"],
+            false,
+        ),
+        tool(
+            "axit_app_data_plan",
+            "Preview reversible Trash of explicitly selected related-data paths returned by axit_app_files. App bundles and launchers use the interactive manager. Does not move files.",
+            json!({"app_key":{"type":"string","maxLength":4096},"paths":{"type":"array","items":{"type":"string","maxLength":4096},"minItems":1,"maxItems":128}}),
+            &["app_key", "paths"],
+            false,
+        ),
+        tool(
             "axit_status",
             "Inspect index progress, permission gaps and filesystem free space.",
             json!({}),
@@ -352,6 +425,24 @@ pub fn tools(writes: bool) -> Vec<Value> {
     tools
 }
 
+fn app_inventory(root: &Path, query: &str, limit: usize) -> Result<Value> {
+    let context = crate::apps::Context::system()?.constrained(root)?;
+    let catalog = crate::apps::inventory(&context);
+    let query = query.to_lowercase();
+    let apps: Vec<_> = catalog
+        .apps
+        .iter()
+        .filter(|a| {
+            format!("{} {}", a.name, a.id)
+                .to_lowercase()
+                .contains(&query)
+        })
+        .collect();
+    Ok(
+        json!({"matched":apps.len(),"apps":apps.iter().take(limit).map(|a|json!({"key":a.key(),"application":a})).collect::<Vec<_>>(),"warnings":catalog.warnings,"scope":crate::text(root),"note":"Bounded scoped metadata. Native package installation/uninstallation is interactive in axit apps."}),
+    )
+}
+
 fn acp_prompt(
     shared: &Arc<Shared>,
     session: &str,
@@ -385,6 +476,17 @@ fn acp_prompt(
     }
     if input == "/scan" {
         return shared.scan();
+    }
+    if input == "/apps" || input.starts_with("/apps ") {
+        return app_inventory(&cwd, input.strip_prefix("/apps").unwrap_or("").trim(), 100);
+    }
+    if let Some(key) = input.strip_prefix("/app ") {
+        let context = crate::apps::Context::system()?.constrained(&cwd)?;
+        let catalog = crate::apps::inventory(&context);
+        let app = crate::apps::resolve(&catalog, key.trim())?;
+        return Ok(
+            json!({"key":app.key(),"application":app,"files":crate::apps::review_files(&context,&catalog,app)}),
+        );
     }
     let index = shared.index()?;
     let scope = index
@@ -424,7 +526,7 @@ fn acp_prompt(
     );
     Ok(
         json!({"matched":result.matched,"elapsed_ms":result.elapsed_ms,"canceled":result.canceled,"entries":result.ids.iter().map(|id|entry_json(&index,*id)).collect::<Result<Vec<_>>>()?,
-        "commands":"/search QUERY · /largest · /status · /scan · /plan ID… · deterministic metadata adapter; no model or file contents required"}),
+        "commands":"/search QUERY · /largest · /status · /scan · /apps [QUERY] · /app KEY · /plan ID… · deterministic metadata adapter; no model or file contents required"}),
     )
 }
 
@@ -582,7 +684,7 @@ pub fn serve(state: PathBuf, root: PathBuf, acp: bool, writes: bool) -> Result<(
                     respond(&output, id, json!({"sessionId":session}));
                     send(
                         &output,
-                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"search","description":"Find indexed filenames","input":{"hint":"query"}},{"name":"largest","description":"Show largest entries"},{"name":"status","description":"Index, disk space and coverage"},{"name":"scan","description":"Refresh the fixed scan scope"},{"name":"plan","description":"Preview safe cache cleanup","input":{"hint":"entry ids"}}]}}}),
+                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"apps","description":"List scoped application metadata","input":{"hint":"optional name"}},{"name":"app","description":"Inspect scoped related files","input":{"hint":"app key"}},{"name":"search","description":"Find indexed filenames","input":{"hint":"query"}},{"name":"largest","description":"Show largest entries"},{"name":"status","description":"Index, disk space and coverage"},{"name":"scan","description":"Refresh the fixed scan scope"},{"name":"plan","description":"Preview safe cache cleanup","input":{"hint":"entry ids"}}]}}}),
                     );
                 }
                 Err(e) => error(&output, id, -32602, &e.to_string()),

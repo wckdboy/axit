@@ -1,6 +1,6 @@
 [package]
 name = "wckd-axit"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.88"
 description = "See what is hiding on your disk. Fast search, storage maps, and guarded cleanup."
@@ -19,6 +19,7 @@ crossterm = "0.29"
 fs2 = "0.4"
 libc = "0.2"
 memmap2 = "0.9"
+plist = { version = "1.10.3", default-features = false }
 ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "unstable-rendered-line-info"] }
 regex = "1.12"
 serde = { version = "1", features = ["derive"] }
