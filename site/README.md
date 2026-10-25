@@ -2,7 +2,7 @@
 
 Static WCKD site deployed with the standard Cloudflare Wrangler workflow.
 No dependency installation is needed. The build uses Node.js; checks also use
-Python 3 to verify the shared pixel axe.
+Python 3 to verify the shared pixel mark.
 
 ```sh
 npm --prefix site run check
@@ -13,8 +13,8 @@ npm run deploy
 ```
 
 `check` builds from a clean checkout, then verifies local assets, anchors, Axit
-branding, the terminal capture, shared pixel axe, installer mirror and font licensing.
-Run `python3 scripts/render-logo.py` after changing `assets/axe.txt`; the terminal
+branding, the terminal capture, shared pixel mark, installer mirror and font licensing.
+Run `python3 scripts/render-logo.py` after changing `assets/mark.txt`; the terminal
 header uses that same mask. `build.mjs` copies the exact root `install.sh` into
 the output; update that source rather than the generated copy.
 The page links to GitHub release downloads; its install command uses `axit.sh/install.sh`.

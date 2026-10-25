@@ -12,8 +12,8 @@ AXIT's **Copper** palette uses `#D9966B` for its identity and navigation, charco
 and graphite surfaces, chalk text, cool blue information and rose destructive actions.
 [View the palette](assets/palette.svg). Runtime colors live in `src/tui/theme.rs`;
 text and action colors have automated contrast checks.
-The pixel axe in the app's top-left corner and website icon shares one 8×8 source
-mask, [assets/axe.txt](assets/axe.txt). The 8×8 silhouette uses one foreground color.
+The split-pixel mark in the app's top-left corner and website icon shares one 8×8 source
+mask, [assets/mark.txt](assets/mark.txt). Two block fragments and a diagonal cut form the 8×8 mark, in one foreground color.
 Run `python3 scripts/render-logo.py` after
 editing it; site checks verify both generated SVGs match.
 
@@ -22,7 +22,7 @@ editing it; site checks verify both generated SVGs match.
 [Plane: Axit / AXIT](https://app.plane.so/wckd/projects/21757fa0-759f-4ce5-a114-4620fd693302/issues/)
 tracks current work and the roadmap. [Axit 0.3.0](https://github.com/wckdboy/axit/releases/tag/v0.3.0)
 is released with a clickable storage map, explicit two-button confirmation,
-navigation focus, bounded background workers and the shared pixel axe.
+navigation focus, bounded background workers and the shared pixel mark.
 [axit.sh](https://axit.sh) is live on Cloudflare using the shared WCKD layout and
 the standard [Wrangler workflow](site/README.md).
 
@@ -94,6 +94,9 @@ TUI keys:
   that intercept those keys. Switching sections safely cancels a pending review.
 - `F6` toggles navigation/content focus. In navigation, arrows choose a section and
   `Enter` or `Down` enters it. `/` or `Ctrl-F` edits search; plain digits remain text there.
+- `Up` at the first row, search field or top of a panel returns to navigation.
+  `Left` / `Right` then changes sections; `Down` returns to content. `Ctrl-Up`
+  jumps straight to navigation, safely canceling any pending review.
 - `Tab` / `Shift-Tab` cycles navigation, query, results, inspector and action buttons.
   Arrow keys choose a focused button; `Enter` activates it.
 - Arrow keys or `j/k` navigate; `Home` / `End` jumps; `PageUp` / `PageDown` moves a page.
@@ -106,6 +109,8 @@ TUI keys:
 - `s` sorts the current list; `p` shows an item's containing folder; `g` toggles the Space map.
 - `?` opens scrollable help; `q` / `Ctrl-Q` quits. An in-progress file operation
   finishes before exit; canceling a preview never changes files.
+
+The minimum terminal size is 48 columns × 16 rows; smaller windows show a resize hint.
 
 Mouse and touchpad:
 
